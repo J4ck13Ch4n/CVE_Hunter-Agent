@@ -169,6 +169,17 @@ Would you be open to adding a note in the README about [the risk] so users handl
 Either way, thanks for your time.
 ```
 
+## Recommended: Humanizer Skill
+
+Install [blader/humanizer](https://github.com/blader/humanizer) — a Claude Code skill that automatically removes signs of AI-generated writing. Run it as a final pass on any report before submitting.
+
+```bash
+# Install the humanizer skill
+git clone https://github.com/blader/humanizer.git .claude/skills/humanizer
+```
+
+After drafting a report, invoke `/humanizer` to clean up AI patterns automatically. This catches things the manual humanization pass might miss.
+
 ## References
 
 - [Humanization Guide](references/humanization-guide.md) — Detailed patterns for natural writing

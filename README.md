@@ -38,6 +38,8 @@ bash /path/to/find-cve-agent/install.sh
 
 Or manually copy the plugin contents into your project's `.claude/` directory.
 
+**Recommended:** Also install [blader/humanizer](https://github.com/blader/humanizer) to auto-clean AI patterns from disclosure reports before sending.
+
 ---
 
 ## Agent Team
