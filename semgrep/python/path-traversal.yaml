@@ -1,0 +1,108 @@
+rules:
+  - id: py-open-user-controlled-path
+    patterns:
+      - pattern-either:
+          - pattern: |
+              open(os.path.join($BASE, $USER_INPUT), ...)
+          - pattern: |
+              open($PATH, ...)
+      - pattern-not: |
+          open("...", ...)
+      - pattern-not-inside: |
+          $RESOLVED = os.path.realpath(...)
+          ...
+          if $RESOLVED.startswith(...):
+              ...
+              open(...)
+    message: >
+      File open() with potentially user-controlled path without realpath validation.
+      os.path.join('/base', '../etc/passwd') = '/etc/passwd' in Python too.
+      Use os.path.realpath() to resolve the full path, then verify it starts
+      with the intended base directory before opening.
+    languages: [python]
+    severity: WARNING
+    metadata:
+      cwe:
+        - "CWE-22: Improper Limitation of a Pathname to a Restricted Directory"
+      confidence: LOW
+      impact: HIGH
+      category: security
+      references:
+        - https://cwe.mitre.org/data/definitions/22.html
+
+  - id: py-shutil-user-path
+    patterns:
+      - pattern-either:
+          - pattern: |
+              shutil.copy($SRC, $DEST)
+          - pattern: |
+              shutil.copy2($SRC, $DEST)
+          - pattern: |
+              shutil.move($SRC, $DEST)
+          - pattern: |
+              shutil.copyfile($SRC, $DEST)
+      - pattern-not: |
+          shutil.copy("...", "...")
+    message: >
+      shutil file operation with potentially user-controlled source or destination path.
+      If either path is attacker-controlled, this enables arbitrary file read/write/move.
+      Validate paths with os.path.realpath() and prefix check before operations.
+    languages: [python]
+    severity: WARNING
+    metadata:
+      cwe:
+        - "CWE-22: Improper Limitation of a Pathname to a Restricted Directory"
+      confidence: LOW
+      impact: HIGH
+      category: security
+
+  - id: py-zipfile-extract-no-check
+    patterns:
+      - pattern-either:
+          - pattern: |
+              $ZIP.extractall(...)
+          - pattern: |
+              $ZIP.extract($MEMBER, ...)
+      - pattern-not-inside: |
+          for $M in $ZIP.namelist():
+              ...
+              if ".." in $M:
+                  ...
+    message: >
+      ZipFile.extractall() or extract() without path traversal validation.
+      Malicious zip files can contain entries with '../' in their names (Zip Slip).
+      Before extraction, check each entry name: reject names containing '..' or
+      starting with '/'. Use os.path.realpath() to verify the target stays in bounds.
+    languages: [python]
+    severity: ERROR
+    metadata:
+      cwe:
+        - "CWE-22: Improper Limitation of a Pathname to a Restricted Directory"
+      confidence: MEDIUM
+      impact: HIGH
+      category: security
+      references:
+        - https://snyk.io/research/zip-slip-vulnerability
+
+  - id: py-tarfile-extract-no-check
+    patterns:
+      - pattern-either:
+          - pattern: |
+              $TAR.extractall(...)
+          - pattern: |
+              $TAR.extract($MEMBER, ...)
+      - pattern-not-inside: |
+          $TAR.extractall(..., filter=...)
+    message: >
+      tarfile.extractall() without filter parameter (Python 3.12+) or manual name validation.
+      Tar archives can contain entries with absolute paths or '../' components, and
+      can also include symlinks pointing outside the target directory.
+      Use extractall(filter='data') on Python 3.12+ or validate each member name.
+    languages: [python]
+    severity: ERROR
+    metadata:
+      cwe:
+        - "CWE-22: Improper Limitation of a Pathname to a Restricted Directory"
+      confidence: MEDIUM
+      impact: HIGH
+      category: security

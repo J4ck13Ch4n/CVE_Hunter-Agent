@@ -1,0 +1,80 @@
+rules:
+  - id: go-ssrf-http-get-user-url
+    patterns:
+      - pattern-either:
+          - pattern: |
+              http.Get($URL)
+          - pattern: |
+              http.Post($URL, ...)
+          - pattern: |
+              http.PostForm($URL, ...)
+      - pattern-not: |
+          http.Get("...")
+      - pattern-not: |
+          http.Post("...", ...)
+    message: >
+      http.Get/Post/PostForm with user-controlled URL enables SSRF.
+      An attacker can probe internal services (169.254.169.254 for cloud metadata,
+      127.0.0.1 for localhost services, internal hostnames). Validate the URL:
+      parse it, resolve DNS, check that the IP is not in private ranges
+      (10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 127.0.0.0/8, 169.254.0.0/16).
+    languages: [go]
+    severity: ERROR
+    metadata:
+      cwe:
+        - "CWE-918: Server-Side Request Forgery"
+      cvss: "CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:C/C:H/I:N/A:N"
+      confidence: MEDIUM
+      impact: HIGH
+      category: security
+      references:
+        - https://cwe.mitre.org/data/definitions/918.html
+
+  - id: go-ssrf-http-newrequest-user-url
+    patterns:
+      - pattern-either:
+          - pattern: |
+              http.NewRequest($METHOD, $URL, ...)
+          - pattern: |
+              http.NewRequestWithContext($CTX, $METHOD, $URL, ...)
+      - pattern-not: |
+          http.NewRequest($METHOD, "...", ...)
+      - pattern-not: |
+          http.NewRequestWithContext($CTX, $METHOD, "...", ...)
+    message: >
+      http.NewRequest with user-controlled URL. If the URL comes from user input
+      (query params, request body, database), this enables SSRF. An attacker can
+      access internal services, cloud metadata endpoints, or scan internal networks.
+      Implement URL validation with DNS resolution and private IP range blocking.
+    languages: [go]
+    severity: WARNING
+    metadata:
+      cwe:
+        - "CWE-918: Server-Side Request Forgery"
+      confidence: MEDIUM
+      impact: HIGH
+      category: security
+
+  - id: go-ssrf-url-parse-no-ip-check
+    patterns:
+      - pattern: |
+          $PARSED, $ERR = url.Parse($USER_INPUT)
+          ...
+          http.Get($PARSED.String())
+      - pattern-not-inside: |
+          ...
+          net.LookupIP(...)
+          ...
+    message: >
+      URL parsed from user input and used in HTTP request without IP validation.
+      url.Parse alone does not prevent SSRF. After parsing, resolve the hostname
+      to an IP address and verify it's not in a private/reserved range before
+      making the request. Also watch for DNS rebinding attacks.
+    languages: [go]
+    severity: WARNING
+    metadata:
+      cwe:
+        - "CWE-918: Server-Side Request Forgery"
+      confidence: LOW
+      impact: HIGH
+      category: security

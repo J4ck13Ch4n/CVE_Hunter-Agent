@@ -1,0 +1,126 @@
+rules:
+  - id: go-os-open-user-path
+    patterns:
+      - pattern-either:
+          - pattern: |
+              os.Open($PATH)
+          - pattern: |
+              os.OpenFile($PATH, ...)
+          - pattern: |
+              os.Create($PATH)
+          - pattern: |
+              os.ReadFile($PATH)
+          - pattern: |
+              os.WriteFile($PATH, ...)
+          - pattern: |
+              ioutil.ReadFile($PATH)
+          - pattern: |
+              ioutil.WriteFile($PATH, ...)
+      - pattern-not: |
+          os.Open("...")
+      - pattern-not: |
+          os.OpenFile("...", ...)
+      - pattern-not: |
+          os.Create("...")
+      - pattern-not: |
+          os.ReadFile("...")
+      - pattern-not: |
+          os.WriteFile("...", ...)
+    message: >
+      File operation with dynamic path. If the path contains user input,
+      an attacker can use '../' sequences to access files outside the intended
+      directory. Use filepath.Clean() and verify the cleaned path starts with
+      the intended base directory using strings.HasPrefix().
+    languages: [go]
+    severity: WARNING
+    metadata:
+      cwe:
+        - "CWE-22: Improper Limitation of a Pathname to a Restricted Directory"
+      cvss: "CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:U/C:H/I:N/A:N"
+      confidence: LOW
+      impact: HIGH
+      category: security
+      references:
+        - https://cwe.mitre.org/data/definitions/22.html
+
+  - id: go-filepath-join-no-clean
+    patterns:
+      - pattern: |
+          filepath.Join($BASE, $USER_INPUT)
+      - pattern-not: |
+          filepath.Join($BASE, "...")
+      - pattern-not-inside: |
+          $CLEANED := filepath.Clean(...)
+          ...
+          if !strings.HasPrefix($CLEANED, ...) {
+              ...
+          }
+    message: >
+      filepath.Join() with user input without subsequent path validation.
+      filepath.Join() does normalize '..' components, but the result can still
+      escape the base directory. After joining, use filepath.Abs() or
+      filepath.EvalSymlinks() and verify with strings.HasPrefix() that the
+      result is still under the intended base path.
+    languages: [go]
+    severity: WARNING
+    metadata:
+      cwe:
+        - "CWE-22: Improper Limitation of a Pathname to a Restricted Directory"
+      confidence: LOW
+      impact: HIGH
+      category: security
+
+  - id: go-zip-extract-no-path-check
+    patterns:
+      - pattern-either:
+          - pattern: |
+              for ..., $FILE := range $READER.File {
+                  ...
+                  os.Create(filepath.Join($DEST, $FILE.Name))
+                  ...
+              }
+          - pattern: |
+              for ..., $FILE := range $READER.File {
+                  ...
+                  os.OpenFile(filepath.Join($DEST, $FILE.Name), ...)
+                  ...
+              }
+    message: >
+      Zip file extraction without validating entry paths (Zip Slip vulnerability).
+      Malicious zip entries can contain paths like '../../etc/cron.d/backdoor'.
+      Before extracting each file: resolve the full path with filepath.Join(),
+      then verify strings.HasPrefix(resolved, destDir) to ensure it stays within
+      the extraction directory.
+    languages: [go]
+    severity: ERROR
+    metadata:
+      cwe:
+        - "CWE-22: Improper Limitation of a Pathname to a Restricted Directory"
+      confidence: HIGH
+      impact: HIGH
+      category: security
+      references:
+        - https://snyk.io/research/zip-slip-vulnerability
+
+  - id: go-http-servefiles-user-path
+    patterns:
+      - pattern-either:
+          - pattern: |
+              http.ServeFile($W, $R, $PATH)
+          - pattern: |
+              http.ServeContent($W, $R, $PATH, ...)
+      - pattern-not: |
+          http.ServeFile($W, $R, "...")
+    message: >
+      http.ServeFile() with dynamic path. If the path is derived from user input
+      (e.g., URL path parameter), an attacker can read arbitrary files.
+      Use http.FileServer with http.Dir to restrict to a specific directory,
+      or validate the path against a whitelist.
+    languages: [go]
+    severity: WARNING
+    metadata:
+      cwe:
+        - "CWE-22: Improper Limitation of a Pathname to a Restricted Directory"
+      confidence: MEDIUM
+      impact: HIGH
+      category: security

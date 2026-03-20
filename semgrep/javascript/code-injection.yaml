@@ -1,0 +1,104 @@
+rules:
+  - id: js-new-function-dynamic
+    patterns:
+      - pattern-either:
+          - pattern: |
+              new Function($ARG)
+          - pattern: |
+              new Function($A, $B)
+          - pattern: |
+              new Function($A, $B, $C)
+          - pattern: |
+              new Function(..., $BODY)
+      - pattern-not: |
+          new Function("...")
+      - pattern-not: |
+          new Function("...", "...")
+    message: >
+      Dynamic input in new Function() constructor enables arbitrary code execution.
+      new Function(body) compiles and executes the body string as JavaScript.
+      If any part of the body comes from user input, this is code injection (CWE-94).
+      Use a safe expression parser or sandboxed evaluator instead.
+    languages: [javascript, typescript]
+    severity: ERROR
+    metadata:
+      cwe:
+        - "CWE-94: Improper Control of Generation of Code"
+      cvss: "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H"
+      confidence: HIGH
+      impact: HIGH
+      category: security
+      references:
+        - https://cwe.mitre.org/data/definitions/94.html
+
+  - id: js-vm-runincontext-dynamic
+    patterns:
+      - pattern-either:
+          - pattern: |
+              vm.runInNewContext($CODE, ...)
+          - pattern: |
+              vm.runInContext($CODE, ...)
+          - pattern: |
+              vm.runInThisContext($CODE, ...)
+          - pattern: |
+              $SCRIPT = new vm.Script($CODE, ...)
+      - pattern-not: |
+          vm.runInNewContext("...", ...)
+      - pattern-not: |
+          vm.runInContext("...", ...)
+    message: >
+      Dynamic input in Node.js vm module. The vm module is NOT a security sandbox.
+      vm.runInNewContext can escape to the host process via constructor chain:
+      this.constructor.constructor('return process')().mainModule.require('child_process').
+      Never use vm with untrusted input. Use vm2 or isolated-vm for sandboxing.
+    languages: [javascript, typescript]
+    severity: ERROR
+    metadata:
+      cwe:
+        - "CWE-94: Improper Control of Generation of Code"
+      confidence: HIGH
+      impact: HIGH
+      category: security
+
+  - id: js-template-literal-code-gen
+    patterns:
+      - pattern-either:
+          - pattern: |
+              new Function(`...${$VAR}...`)
+          - pattern: |
+              new Function("...", `...${$VAR}...`)
+    message: >
+      Template literal with interpolation used as new Function() body.
+      This is a common pattern in code-generating libraries (schema validators,
+      template engines, query builders) that leads to code injection when the
+      interpolated value contains user input. Check if $VAR is attacker-controlled.
+    languages: [javascript, typescript]
+    severity: ERROR
+    metadata:
+      cwe:
+        - "CWE-94: Improper Control of Generation of Code"
+      confidence: HIGH
+      impact: HIGH
+      category: security
+
+  - id: js-function-constructor-indirect
+    patterns:
+      - pattern-either:
+          - pattern: |
+              $OBJ.constructor.constructor($CODE)
+          - pattern: |
+              $OBJ["constructor"]["constructor"]($CODE)
+          - pattern: |
+              $OBJ.__proto__.constructor($CODE)
+    message: >
+      Indirect access to Function constructor via prototype chain.
+      This pattern (obj.constructor.constructor) retrieves the Function constructor
+      and can execute arbitrary code. Common in sandbox escape exploits.
+    languages: [javascript, typescript]
+    severity: ERROR
+    metadata:
+      cwe:
+        - "CWE-94: Improper Control of Generation of Code"
+      confidence: HIGH
+      impact: HIGH
+      category: security

@@ -1,0 +1,16 @@
+{
+  "name": "find-cve-agent",
+  "version": "1.0.0",
+  "description": "CVE hunting harness for open source security research. A 5-agent team that systematically finds, validates, and reports real vulnerabilities in open source packages.",
+  "author": "Community",
+  "license": "Apache-2.0",
+  "homepage": "https://github.com/find-cve-agent/find-cve-agent",
+  "hooks": "hooks/hooks.json",
+  "agents": "agents/",
+  "commands": "commands/",
+  "templates": "templates/",
+  "requires": {
+    "tools": ["git", "gh", "python3", "node", "curl"],
+    "optional": ["npm", "pip3"]
+  }
+}

@@ -1,0 +1,79 @@
+rules:
+  - id: go-exec-command-user-input
+    patterns:
+      - pattern-either:
+          - pattern: |
+              exec.Command($CMD, ...)
+          - pattern: |
+              exec.CommandContext($CTX, $CMD, ...)
+      - pattern-not: |
+          exec.Command("...", ...)
+      - pattern-not: |
+          exec.CommandContext($CTX, "...", ...)
+    message: >
+      exec.Command() with dynamic command name. If the command name comes from
+      user input, an attacker can execute arbitrary binaries. Hardcode the
+      command name and only allow user input in arguments.
+    languages: [go]
+    severity: ERROR
+    metadata:
+      cwe:
+        - "CWE-78: Improper Neutralization of Special Elements used in an OS Command"
+      cvss: "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H"
+      confidence: HIGH
+      impact: HIGH
+      category: security
+      references:
+        - https://cwe.mitre.org/data/definitions/78.html
+
+  - id: go-exec-command-shell-invocation
+    patterns:
+      - pattern-either:
+          - pattern: |
+              exec.Command("sh", "-c", $CMD)
+          - pattern: |
+              exec.Command("bash", "-c", $CMD)
+          - pattern: |
+              exec.Command("/bin/sh", "-c", $CMD)
+          - pattern: |
+              exec.Command("/bin/bash", "-c", $CMD)
+      - pattern-not: |
+          exec.Command("sh", "-c", "...")
+      - pattern-not: |
+          exec.Command("bash", "-c", "...")
+    message: >
+      Shell invocation via exec.Command("sh", "-c", cmd) with dynamic input.
+      This passes the command through a shell, enabling injection via metacharacters.
+      Use exec.Command() with the binary directly and pass arguments separately.
+    languages: [go]
+    severity: ERROR
+    metadata:
+      cwe:
+        - "CWE-78: Improper Neutralization of Special Elements used in an OS Command"
+      confidence: HIGH
+      impact: HIGH
+      category: security
+
+  - id: go-exec-command-string-concat
+    patterns:
+      - pattern-either:
+          - pattern: |
+              exec.Command("sh", "-c", $A + $B)
+          - pattern: |
+              exec.Command("bash", "-c", $A + $B)
+          - pattern: |
+              exec.Command("sh", "-c", fmt.Sprintf(...))
+          - pattern: |
+              exec.Command("bash", "-c", fmt.Sprintf(...))
+    message: >
+      String concatenation or fmt.Sprintf in shell command argument.
+      Any user input in the formatted string enables command injection.
+      Avoid shell invocation entirely; use exec.Command with argument list.
+    languages: [go]
+    severity: ERROR
+    metadata:
+      cwe:
+        - "CWE-78: Improper Neutralization of Special Elements used in an OS Command"
+      confidence: HIGH
+      impact: HIGH
+      category: security

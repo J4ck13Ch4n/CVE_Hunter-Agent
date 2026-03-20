@@ -1,0 +1,93 @@
+rules:
+  - id: js-recursive-merge-no-proto-check
+    patterns:
+      - pattern-either:
+          - pattern: |
+              function $MERGE($TARGET, $SOURCE) {
+                ...
+                for (var $KEY in $SOURCE) {
+                  ...
+                  if (typeof $SOURCE[$KEY] === 'object') {
+                    ...
+                    $MERGE(...)
+                    ...
+                  }
+                  ...
+                }
+                ...
+              }
+          - pattern: |
+              function $MERGE($TARGET, $SOURCE) {
+                ...
+                Object.keys($SOURCE).forEach(function($KEY) {
+                  ...
+                  $MERGE(...)
+                  ...
+                })
+                ...
+              }
+      - pattern-not-inside: |
+          if ($KEY === '__proto__' || $KEY === 'constructor' || $KEY === 'prototype') { ... }
+          ...
+    message: >
+      Recursive object merge without __proto__/constructor/prototype filtering.
+      An attacker can supply {"__proto__": {"isAdmin": true}} to pollute Object.prototype,
+      affecting all objects in the application. Filter dangerous keys: __proto__, constructor, prototype.
+    languages: [javascript, typescript]
+    severity: ERROR
+    metadata:
+      cwe:
+        - "CWE-1321: Improperly Controlled Modification of Object Prototype Attributes"
+      confidence: MEDIUM
+      impact: HIGH
+      category: security
+      references:
+        - https://cwe.mitre.org/data/definitions/1321.html
+
+  - id: js-bracket-notation-assignment-tainted
+    patterns:
+      - pattern-either:
+          - pattern: |
+              $OBJ[$KEY1][$KEY2] = $VALUE
+          - pattern: |
+              $OBJ[$KEY1][$KEY2][$KEY3] = $VALUE
+      - pattern-not: |
+          $OBJ["..."]["..."] = $VALUE
+    message: >
+      Nested bracket notation assignment with dynamic keys.
+      If keys come from user input, this enables prototype pollution:
+      obj['__proto__']['polluted'] = true. Validate that keys are not
+      '__proto__', 'constructor', or 'prototype' before assignment.
+    languages: [javascript, typescript]
+    severity: WARNING
+    metadata:
+      cwe:
+        - "CWE-1321: Improperly Controlled Modification of Object Prototype Attributes"
+      confidence: LOW
+      impact: HIGH
+      category: security
+
+  - id: js-object-assign-from-untrusted
+    patterns:
+      - pattern-either:
+          - pattern: |
+              Object.assign($TARGET, $REQ.body)
+          - pattern: |
+              Object.assign($TARGET, $REQ.query)
+          - pattern: |
+              Object.assign($TARGET, $REQ.params)
+          - pattern: |
+              Object.assign($TARGET, JSON.parse($INPUT))
+    message: >
+      Object.assign() with untrusted input (request body/query/params).
+      While Object.assign() itself doesn't traverse __proto__, the source object
+      may have been crafted with Object.create(null) or via JSON.parse which can
+      include __proto__ as an own property. Validate input before merging.
+    languages: [javascript, typescript]
+    severity: WARNING
+    metadata:
+      cwe:
+        - "CWE-1321: Improperly Controlled Modification of Object Prototype Attributes"
+      confidence: LOW
+      impact: MEDIUM
+      category: security

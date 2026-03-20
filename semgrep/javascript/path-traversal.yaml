@@ -1,0 +1,107 @@
+rules:
+  - id: js-path-join-user-input-write
+    patterns:
+      - pattern-either:
+          - pattern: |
+              fs.writeFile(path.join($BASE, $USER_INPUT), ...)
+          - pattern: |
+              fs.writeFileSync(path.join($BASE, $USER_INPUT), ...)
+          - pattern: |
+              fs.createWriteStream(path.join($BASE, $USER_INPUT), ...)
+      - pattern-not: |
+          fs.writeFile(path.join($BASE, "..."), ...)
+    message: >
+      path.join() does NOT prevent path traversal. path.join('/base', '../etc/passwd')
+      returns '/etc/passwd'. User-controlled input in path.join() reaching a file write
+      operation enables arbitrary file write (CWE-22). Use path.resolve() and verify
+      the result starts with the intended base directory.
+    languages: [javascript, typescript]
+    severity: ERROR
+    metadata:
+      cwe:
+        - "CWE-22: Improper Limitation of a Pathname to a Restricted Directory"
+      cvss: "CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:U/C:N/I:H/A:H"
+      confidence: HIGH
+      impact: HIGH
+      category: security
+      references:
+        - https://cwe.mitre.org/data/definitions/22.html
+
+  - id: js-path-join-user-input-read
+    patterns:
+      - pattern-either:
+          - pattern: |
+              fs.readFile(path.join($BASE, $USER_INPUT), ...)
+          - pattern: |
+              fs.readFileSync(path.join($BASE, $USER_INPUT), ...)
+          - pattern: |
+              fs.createReadStream(path.join($BASE, $USER_INPUT), ...)
+      - pattern-not: |
+          fs.readFile(path.join($BASE, "..."), ...)
+    message: >
+      path.join() with user input reaching a file read operation.
+      path.join('/uploads', '../../etc/passwd') = '/etc/passwd'.
+      Validate that the resolved path stays within the intended directory.
+    languages: [javascript, typescript]
+    severity: WARNING
+    metadata:
+      cwe:
+        - "CWE-22: Improper Limitation of a Pathname to a Restricted Directory"
+      confidence: MEDIUM
+      impact: HIGH
+      category: security
+
+  - id: js-zip-entry-no-path-check
+    patterns:
+      - pattern-either:
+          - pattern: |
+              $ENTRY.fileName
+              ...
+              fs.writeFile(..., ...)
+          - pattern: |
+              $ENTRY.entryName
+              ...
+              fs.writeFileSync(...)
+          - pattern: |
+              $ENTRY.path
+              ...
+              fs.createWriteStream(...)
+    message: >
+      Zip entry filename used in file write without path traversal check.
+      Malicious zip files can contain entries with names like '../../etc/cron.d/exploit'
+      (Zip Slip attack, CWE-22). Always validate that the resolved extraction path
+      stays within the intended output directory.
+    languages: [javascript, typescript]
+    severity: ERROR
+    metadata:
+      cwe:
+        - "CWE-22: Improper Limitation of a Pathname to a Restricted Directory"
+      confidence: MEDIUM
+      impact: HIGH
+      category: security
+      references:
+        - https://snyk.io/research/zip-slip-vulnerability
+
+  - id: js-express-sendfile-user-input
+    patterns:
+      - pattern-either:
+          - pattern: |
+              res.sendFile($PATH)
+          - pattern: |
+              res.download($PATH)
+      - pattern-not: |
+          res.sendFile("...")
+      - pattern-not: |
+          res.download("...")
+    message: >
+      User-controlled path in res.sendFile() or res.download() without validation.
+      An attacker could read arbitrary files from the server filesystem.
+      Use the 'root' option to restrict to a specific directory.
+    languages: [javascript, typescript]
+    severity: WARNING
+    metadata:
+      cwe:
+        - "CWE-22: Improper Limitation of a Pathname to a Restricted Directory"
+      confidence: MEDIUM
+      impact: HIGH
+      category: security

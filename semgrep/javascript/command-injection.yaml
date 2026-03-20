@@ -1,0 +1,99 @@
+rules:
+  - id: js-child-process-exec-tainted
+    patterns:
+      - pattern-either:
+          - pattern: |
+              child_process.exec($CMD, ...)
+          - pattern: |
+              require('child_process').exec($CMD, ...)
+          - pattern: |
+              exec($CMD, ...)
+      - pattern-not: |
+          child_process.exec("...", ...)
+      - metavariable-pattern:
+          metavariable: $CMD
+          pattern-not: |
+            "..."
+    message: >
+      User-controlled input flows into child_process.exec() which spawns a shell.
+      This allows command injection via shell metacharacters (;, |, $(), ``, &&).
+      Use child_process.execFile() or child_process.spawn() with argument arrays instead.
+    languages: [javascript, typescript]
+    severity: ERROR
+    metadata:
+      cwe:
+        - "CWE-78: Improper Neutralization of Special Elements used in an OS Command"
+      cvss: "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H"
+      confidence: HIGH
+      impact: HIGH
+      category: security
+      technology:
+        - nodejs
+      references:
+        - https://cwe.mitre.org/data/definitions/78.html
+
+  - id: js-child-process-exec-template-literal
+    patterns:
+      - pattern-either:
+          - pattern: |
+              child_process.exec(`...${$VAR}...`, ...)
+          - pattern: |
+              require('child_process').exec(`...${$VAR}...`, ...)
+          - pattern: |
+              exec(`...${$VAR}...`, ...)
+    message: >
+      Template literal with interpolated variable in child_process.exec().
+      If $VAR contains user input, this enables command injection.
+      Use execFile() with argument arrays instead of shell string interpolation.
+    languages: [javascript, typescript]
+    severity: ERROR
+    metadata:
+      cwe:
+        - "CWE-78: Improper Neutralization of Special Elements used in an OS Command"
+      confidence: HIGH
+      impact: HIGH
+      category: security
+
+  - id: js-child-process-exec-concat
+    patterns:
+      - pattern-either:
+          - pattern: |
+              child_process.exec($A + $B, ...)
+          - pattern: |
+              require('child_process').exec($A + $B, ...)
+    message: >
+      String concatenation in child_process.exec() argument.
+      If any concatenated value contains user input, this enables command injection.
+      Use execFile() or spawn() with argument arrays.
+    languages: [javascript, typescript]
+    severity: WARNING
+    metadata:
+      cwe:
+        - "CWE-78: Improper Neutralization of Special Elements used in an OS Command"
+      confidence: MEDIUM
+      impact: HIGH
+      category: security
+
+  - id: js-spawn-shell-true
+    patterns:
+      - pattern-either:
+          - pattern: |
+              child_process.spawn($CMD, $ARGS, {shell: true, ...})
+          - pattern: |
+              spawn($CMD, $ARGS, {shell: true, ...})
+          - pattern: |
+              child_process.execSync($CMD, {shell: true, ...})
+      - pattern-not: |
+          child_process.spawn("...", "...", {shell: true, ...})
+    message: >
+      spawn() or execSync() called with shell:true negates the safety of argument arrays.
+      When shell:true is set, the command and arguments are joined into a shell string,
+      re-enabling command injection. Remove shell:true or use execFile().
+    languages: [javascript, typescript]
+    severity: WARNING
+    metadata:
+      cwe:
+        - "CWE-78: Improper Neutralization of Special Elements used in an OS Command"
+      confidence: MEDIUM
+      impact: HIGH
+      category: security

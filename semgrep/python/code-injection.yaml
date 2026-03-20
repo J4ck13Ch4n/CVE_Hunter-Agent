@@ -1,0 +1,81 @@
+rules:
+  - id: py-pickle-loads-untrusted
+    patterns:
+      - pattern-either:
+          - pattern: |
+              pickle.loads($DATA)
+          - pattern: |
+              pickle.load($FILE)
+          - pattern: |
+              cPickle.loads($DATA)
+          - pattern: |
+              cPickle.load($FILE)
+          - pattern: |
+              _pickle.loads($DATA)
+      - pattern-not: |
+          pickle.loads(b"...")
+    message: >
+      pickle deserialization with potentially untrusted data enables arbitrary code execution.
+      Python pickle can run arbitrary code during deserialization via __reduce__.
+      Never unpickle data from untrusted sources. Use JSON, MessagePack, or protobuf instead.
+    languages: [python]
+    severity: ERROR
+    metadata:
+      cwe:
+        - "CWE-502: Deserialization of Untrusted Data"
+      cvss: "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H"
+      confidence: HIGH
+      impact: HIGH
+      category: security
+      references:
+        - https://cwe.mitre.org/data/definitions/502.html
+
+  - id: py-yaml-load-unsafe
+    patterns:
+      - pattern-either:
+          - pattern: |
+              yaml.load($DATA)
+          - pattern: |
+              yaml.load($DATA, Loader=yaml.Loader)
+          - pattern: |
+              yaml.load($DATA, Loader=yaml.UnsafeLoader)
+          - pattern: |
+              yaml.load($DATA, Loader=yaml.FullLoader)
+      - pattern-not: |
+          yaml.load($DATA, Loader=yaml.SafeLoader)
+    message: >
+      yaml.load() without SafeLoader can run arbitrary Python code.
+      YAML supports Python-specific tags (!!python/object, !!python/object/apply)
+      that instantiate objects and call functions during parsing.
+      Use yaml.safe_load() or yaml.load(data, Loader=yaml.SafeLoader).
+    languages: [python]
+    severity: ERROR
+    metadata:
+      cwe:
+        - "CWE-502: Deserialization of Untrusted Data"
+      confidence: HIGH
+      impact: HIGH
+      category: security
+
+  - id: py-exec-dynamic-input
+    patterns:
+      - pattern-either:
+          - pattern: |
+              exec($CODE)
+          - pattern: |
+              exec($CODE, ...)
+      - pattern-not: |
+          exec("...")
+    message: >
+      Dynamic input in exec() runs arbitrary Python code.
+      If any part of the argument is attacker-controlled, this enables full RCE.
+      Avoid using exec() with untrusted input entirely. Use ast.literal_eval() for
+      safe evaluation of literal expressions only.
+    languages: [python]
+    severity: ERROR
+    metadata:
+      cwe:
+        - "CWE-94: Improper Control of Generation of Code"
+      confidence: MEDIUM
+      impact: HIGH
+      category: security
