@@ -74,7 +74,8 @@ Recommend the best candidate to the Director:
 ```
 Proposed target: <package-name>
 Reason: <why this is the best candidate>
-Approve? (I'll create the full brief on approval)
+Full brief: targets/<repo>/brief.md
+Approve target?
 ```
 
 ## Category Keywords

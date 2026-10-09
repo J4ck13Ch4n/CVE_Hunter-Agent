@@ -1,95 +1,74 @@
 #!/usr/bin/env node
 
-/**
- * Pre-Tool-Use: Clone Deduplication Hook
- *
- * Before a Bash tool call that contains "git clone":
- * - Checks if the target repo is already in REGISTRY.md
- * - Warns if the target has already been investigated
- * - Checks if the directory already exists locally
- */
+import { existsSync, readFileSync } from "node:fs";
+import { join } from "node:path";
+import { approvedWorkflow, block, projectRoot, readEvent, sectionBody, workflowState } from "./hook-utils.mjs";
 
-import { readFileSync, existsSync } from "fs";
-import { join } from "path";
+const event = readEvent();
+const command = event.tool_input?.command || "";
+if (!/(?:^|[;&|]\s*)git\s+clone\b/.test(command)) process.exit(0);
 
-const projectRoot = process.env.PROJECT_DIR || process.cwd();
-const registryPath = join(projectRoot, "REGISTRY.md");
+const match = command.match(
+  /(?:https?:\/\/github\.com\/|git@github\.com:)([A-Za-z0-9_.-]+)\/([A-Za-z0-9_.-]+?)(?:\.git)?(?=[\s"']|$)/,
+);
+if (!match) process.exit(0);
 
-// Read the tool input from stdin
-let input = "";
-try {
-  input = readFileSync("/dev/stdin", "utf-8");
-} catch {
-  process.exit(0);
-}
+const owner = match[1].toLowerCase();
+const repo = match[2].toLowerCase();
+const identity = `${owner}/${repo}`;
+const root = projectRoot();
+const registryPath = join(root, "REGISTRY.md");
 
-// Only act on git clone commands
-if (!input.includes("git clone")) {
-  process.exit(0);
-}
-
-// Extract the repo URL or name from the clone command
-const cloneMatch = input.match(/git clone\s+(?:--[^\s]+\s+)*(?:["']?)([^\s"']+)/);
-if (!cloneMatch) {
-  process.exit(0);
-}
-
-const repoUrl = cloneMatch[1];
-
-// Extract repo name from URL
-const repoName = repoUrl
-  .replace(/\.git$/, "")
-  .split("/")
-  .pop();
-
-if (!repoName) {
-  process.exit(0);
-}
-
-const warnings = [];
-
-// Check REGISTRY.md for duplicates
 if (existsSync(registryPath)) {
-  try {
-    const registry = readFileSync(registryPath, "utf-8");
-    const lowerRegistry = registry.toLowerCase();
-    const lowerName = repoName.toLowerCase();
-
-    if (lowerRegistry.includes(lowerName)) {
-      // Determine which section it's in
-      const sections = [
-        { name: "IN PROGRESS", pattern: /## IN PROGRESS([\s\S]*?)(?=##|$)/ },
-        { name: "SUBMITTED", pattern: /## SUBMITTED([\s\S]*?)(?=##|$)/ },
-        { name: "FALSE POSITIVES", pattern: /## FALSE POSITIVES([\s\S]*?)(?=##|$)/ },
-        { name: "SKIP", pattern: /## SKIP([\s\S]*?)(?=##|$)/ },
-        { name: "DUPLICATE", pattern: /## DUPLICATE([\s\S]*?)(?=##|$)/ },
-      ];
-
-      for (const section of sections) {
-        const match = registry.match(section.pattern);
-        if (match && match[1].toLowerCase().includes(lowerName)) {
-          warnings.push(
-            `REGISTRY WARNING: "${repoName}" found in ${section.name} section of REGISTRY.md. Check before proceeding.`
-          );
-          break;
-        }
-      }
+  const registry = readFileSync(registryPath, "utf8");
+  for (const section of ["IN PROGRESS", "SUBMITTED", "FALSE POSITIVES", "SKIP", "DUPLICATE"]) {
+    const body = sectionBody(registry, section);
+    if (!body) continue;
+    const found = body
+      .split("\n")
+      .filter((line) => line.startsWith("|") && !line.includes("---"))
+      .map((line) => line.split("|")[1]?.trim().toLowerCase())
+      .some((name) => name === repo || name === identity);
+    if (found) {
+      block(`Clone blocked: ${identity} already exists in REGISTRY.md section ${section}. Resume or choose another target.`);
     }
-  } catch {
-    // Registry couldn't be read - not critical
   }
 }
 
-// Check if target directory already exists
-const targetsDir = join(projectRoot, "targets", repoName);
-if (existsSync(targetsDir)) {
-  warnings.push(
-    `DIRECTORY EXISTS: targets/${repoName}/ already exists locally. The repo may already be cloned.`
-  );
+const targetPath = command.match(/(?:^|\s)(targets[\/\\]([^\s"']+))/)?.[1];
+if (targetPath && !approvedWorkflow(root, identity, "targetApproved")) {
+  block(`Clone blocked: Director target approval missing for ${identity}.`);
+}
+if (targetPath && targetPath.toLowerCase().split(/[\\/]/).pop() !== repo &&
+    !workflowState(join(root, "targets", repo))?.targetApproved) {
+  block(`Clone blocked: target state does not approve ${identity}.`);
 }
 
-if (warnings.length > 0) {
-  console.log(warnings.join("\n"));
+if (!targetPath && workflowState(join(root, "targets", repo)) &&
+    !approvedWorkflow(root, identity, "targetApproved")) {
+  block(`Clone blocked: Director target approval missing for ${identity}.`);
 }
 
-process.exit(0);
+if (targetPath && targetPath.toLowerCase().split(/[\\/]/).pop() === repo &&
+    !workflowState(join(root, "targets", repo)) &&
+    !existsSync(join(root, "targets", repo))) {
+  block(`Clone blocked: target workflow state missing for ${identity}.`);
+}
+
+if (targetPath && targetPath.toLowerCase().split(/[\\/]/).pop() === repo &&
+    workflowState(join(root, "targets", repo))?.targetApproved !== true) {
+  block(`Clone blocked: Director target approval missing for ${identity}.`);
+}
+
+if (targetPath && targetPath.toLowerCase().split(/[\\/]/).pop() === repo &&
+    existsSync(join(root, "targets", repo))) {
+  block(`Clone blocked: targets/${repo}/ already exists. Use existing target.`);
+}
+
+if (!targetPath && !workflowState(join(root, "targets", repo))) {
+  // Bare clones remain compatible with manual use; target approval binds explicit workflow paths.
+}
+
+if (existsSync(join(root, "targets", repo))) {
+  block(`Clone blocked: targets/${repo}/ already exists. Use existing target.`);
+}

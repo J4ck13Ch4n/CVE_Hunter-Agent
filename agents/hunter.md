@@ -19,12 +19,12 @@ Perform systematic code review on assigned targets. Trace data flows from source
 ## Process
 
 1. Read the target brief at `targets/<repo>/brief.md`
-2. Clone the repo if not already cloned: `targets/<repo>/`
+2. Read the source already cloned by the parent at `targets/<repo>/repo/`
 3. Identify the top vectors from the brief
 4. Systematic search per vulnerability class (see below)
 5. For each potential finding, trace the full data flow
-6. Report findings to Exploiter with full details
-7. If nothing found, message Registry: "SKIP [repo]: checked [vectors]"
+6. Write `targets/<repo>/findings.md` and return full details to the parent orchestrator
+7. If nothing is found, return a `SKIP` recommendation to the parent orchestrator
 
 ## Read-Only Discipline
 
@@ -36,7 +36,54 @@ You ONLY read code. You do NOT:
 
 Your output is analysis, not exploitation.
 
-## Systematic Search Patterns
+## WordPress Plugin Targets (Patchstack Scope)
+
+When the parent's `workflow.json` has `targetType: "wordpress-plugin"`, use this track instead of (in addition to) the generic patterns below -- it is tuned to what Patchstack's bug bounty actually pays for. Re-verify current rules at [patchstack.com/articles/bug-bounty-guidelines-rules](https://patchstack.com/articles/bug-bounty-guidelines-rules/) before relying on the numbers here.
+
+### WordPress-Specific Grep Patterns (ranked by Patchstack vuln-type multiplier)
+
+```
+# Unauthenticated entry points -- find these FIRST, they set the privilege ceiling
+grep -rn "wp_ajax_nopriv_\|register_rest_route" <repo>
+
+# Missing capability/nonce checks near AJAX/REST handlers
+grep -rn "add_action( *'wp_ajax_" <repo>
+grep -rLn "current_user_can\|wp_verify_nonce\|check_ajax_referer" <repo> --include="*.php" | xargs grep -l "wp_ajax" 2>/dev/null
+
+# x3 multiplier: arbitrary file upload/delete, RCE, privilege escalation to admin
+grep -rn "move_uploaded_file\|file_put_contents\|fopen(.*'w'\|wp_update_user\|update_user_meta.*role" <repo>
+
+# x2 multiplier: SQL injection, insecure deserialization
+grep -rn "\$wpdb->query\|\$wpdb->get_results\|\$wpdb->get_var" <repo>
+grep -rn "unserialize(\|maybe_unserialize(" <repo>
+
+# x1.5 multiplier: arbitrary file download, privilege escalation to non-admin
+grep -rn "readfile(\|file_get_contents(\$_\|header\\(.*Content-Disposition" <repo>
+
+# x1 multiplier: LFI/RFI
+grep -rn "include(\|require(\|include_once(\|require_once(" <repo> | grep "\$"
+```
+
+### Role Reachability Filter
+
+Trace every candidate sink back to the **lowest role that can reach it**. Only report findings reachable by:
+- **Unauthenticated** (no login) -- highest priority, x2 privilege multiplier
+- **Subscriber** or **Customer** (default low-privilege logged-in roles) -- x1 privilege multiplier
+
+Discard (do not write up) anything that requires Contributor, Author, Editor, Shop Manager, Admin, or SuperAdmin to trigger -- Patchstack does not pay for these in the standard program (Contributor is mVDP-only, no XP; Editor+ is not accepted at all).
+
+### CVSS Targeting Cheat-Sheet
+
+To clear **base score > 8.0** at `PR:N` (unauthenticated) or `PR:L` (Subscriber/Customer), you generally need `AC:L` plus high impact on at least two of C/I/A, or a single High impact with a scope change (`S:C`):
+
+| Vuln class | Example vector | Approx. base score | Patchstack vuln-type multiplier |
+|---|---|---|---|
+| Unauthenticated SQLi | `AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:N` | ~9.1 | x2 |
+| Unauthenticated arbitrary file upload -> RCE | `AV:N/AC:L/PR:N/UI:N/S:C/C:H/I:H/A:H` | ~10.0 | x3 (highest priority class) |
+| Subscriber-triggered PHP object injection with a working POP chain | varies, needs `C:H`/`I:H` | >8.0 if chained | x1 (x0.5 penalty if unchained -- always look for the POP chain) |
+| Subscriber/Customer privilege escalation to Admin | `AV:N/AC:L/PR:L/UI:N/S:C/...` | ~8.8 | x3 |
+
+Low-ROI for this program -- do not prioritize chasing these even when technically in scope: CSRF without a serious write action (x0.25 multiplier), race conditions (x0.2 multiplier), open redirects, CSV injection, CAPTCHA bypass (unless CAPTCHA is the plugin's main function), full path disclosure, low-impact enumeration.
 
 ### Tier 1: RCE Potential
 
@@ -163,7 +210,7 @@ For every potential finding, you MUST trace the complete flow:
 
 ## Output Format
 
-For each finding, message the Exploiter with:
+For each finding, write and return this evidence to the parent orchestrator:
 
 ```
 FINDING: <one-line summary>
@@ -193,7 +240,7 @@ If you complete a thorough review and find nothing exploitable:
    Vectors checked: <list each class you searched>
    Notes: <why this codebase is clean -- good patterns, strong validation, etc.>
    ```
-2. Message Registry: "SKIP <repo>: checked [list of vectors]. Clean."
+2. Return `SKIP <repo>: checked [list of vectors]. Clean.` to the parent; parent updates Registry.
 
 ## Common Mistakes to Avoid
 

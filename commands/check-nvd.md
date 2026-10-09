@@ -1,104 +1,37 @@
 ---
 name: check-nvd
-description: "Query NVD and OSV.dev for existing CVEs. Usage: /check-nvd <package-name>. Shows CVE count, severity breakdown, and recent fixes."
+description: "Query OSV and NVD for an exact package identity. Usage: /check-nvd <ecosystem> <package> [version]."
 ---
 
-# /check-nvd <package-name>
+# /check-nvd <ecosystem> <package> [version]
 
-Check if a package has existing CVEs in NVD, OSV.dev, and GitHub Security Advisories.
+Do not assume npm. Require ecosystem, package name, and exact version when available.
 
 ## Process
 
-### Step 1: Query OSV.dev
+1. Run the bundled OSV helper:
 
 ```bash
-# Query OSV.dev for known vulnerabilities
-curl -s "https://api.osv.dev/v1/query" \
-  -H "Content-Type: application/json" \
-  -d "{\"package\":{\"name\":\"$ARGUMENTS\",\"ecosystem\":\"npm\"}}" \
-  | python3 -m json.tool
+"${CLAUDE_PLUGIN_ROOT}/scripts/check-osv.sh" <ecosystem> <package> [version]
 ```
 
-If the package is not on npm, try other ecosystems:
-```bash
-# PyPI
-curl -s "https://api.osv.dev/v1/query" -d "{\"package\":{\"name\":\"$ARGUMENTS\",\"ecosystem\":\"PyPI\"}}"
-
-# Go
-curl -s "https://api.osv.dev/v1/query" -d "{\"package\":{\"name\":\"$ARGUMENTS\",\"ecosystem\":\"Go\"}}"
-
-# RubyGems
-curl -s "https://api.osv.dev/v1/query" -d "{\"package\":{\"name\":\"$ARGUMENTS\",\"ecosystem\":\"RubyGems\"}}"
-```
-
-### Step 2: Query GitHub Security Advisories
+For project-local manual installs use:
 
 ```bash
-# Search GitHub Advisory Database
-gh api graphql -f query='
-{
-  securityAdvisories(first: 20, orderBy: {field: PUBLISHED_AT, direction: DESC}, identifier: {type: CVE, value: ""}) {
-    nodes {
-      ghsaId
-      summary
-      severity
-      publishedAt
-      identifiers { type value }
-    }
-  }
-}'
-
-# Or search by package name
-gh api "/advisories?ecosystem=npm&package=$ARGUMENTS" 2>/dev/null
+"${CLAUDE_PROJECT_DIR}/.claude/find-cve-agent/scripts/check-osv.sh" <ecosystem> <package> [version]
 ```
 
-### Step 3: Check the Repo Directly
+2. Run NVD keyword search as secondary candidate discovery:
 
 ```bash
-# Find the GitHub repo
-npm view "$ARGUMENTS" repository.url 2>/dev/null
-
-# Check repo security advisories
-gh api "repos/<owner>/<repo>/security-advisories" 2>/dev/null
+"${CLAUDE_PLUGIN_ROOT}/scripts/check-nvd.sh" <package>
 ```
 
-### Step 4: Summarize Results
-
-Present a summary:
-
-```
-CVE CHECK: <package-name>
-
-Total CVEs found: <count>
-
-Severity breakdown:
-  CRITICAL: <count>
-  HIGH:     <count>
-  MEDIUM:   <count>
-  LOW:      <count>
-
-Recent CVEs (last 12 months):
-  <CVE-ID> | <severity> | <summary> | <date>
-  <CVE-ID> | <severity> | <summary> | <date>
-
-Recent security fixes (from git log):
-  <commit hash> | <date> | <message>
-
-Assessment:
-  <0-3 CVEs>: Under-audited. Good target.
-  <4-10 CVEs>: Moderately audited. Proceed with caution -- look for incomplete fixes.
-  <>10 CVEs>: Over-audited. Skip unless looking for fix bypasses.
-
-Incomplete fix opportunities:
-  <List any CVEs where the fix might be incomplete based on the patch>
-```
-
-### Step 5: Update Registry
-
-If existing CVEs are found and they cover the same vectors we'd investigate:
-- Message Registry to add to DUPLICATE section
-- Include the specific CVE IDs and what they cover
-
-If CVEs exist but leave gaps:
-- Note which vectors are already covered
-- Recommend focusing on uncovered vectors
+3. Verify every candidate against package identity, repository, affected range, and exact version. A keyword match alone is not a duplicate.
+4. Check repository security advisories and security-related release notes.
+5. Return one status:
+   - `CLEAN`: no matching advisory after successful queries.
+   - `DUPLICATE`: existing advisory covers exact issue and version.
+   - `GAPS_REMAIN`: advisories exist but target vectors remain uncovered.
+   - `UNKNOWN`: any required API query or identity check failed.
+6. Update Registry only for verified duplicates. Never convert an API failure into `CLEAN`.

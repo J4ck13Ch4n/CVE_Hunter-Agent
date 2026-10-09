@@ -1,0 +1,7 @@
+{
+  "repository": "owner/repository",
+  "currentPhase": "registry_check",
+  "targetApproved": false,
+  "pocApproved": false,
+  "submissionApproved": false
+}

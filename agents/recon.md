@@ -112,7 +112,7 @@ Create `targets/<repo>/brief.md` with this format:
 
 ### Step 5: Propose to Director
 
-Message the Director:
+Return this proposal to the parent orchestrator for Director approval:
 ```
 Proposed target: <package-name>
 Stars: <count> | Downloads: <count>/week | Language: <lang>
@@ -125,8 +125,8 @@ Approve?
 
 ### Step 6: On Approval
 
-1. Message Registry: "Mark <package-name> as IN_PROGRESS, vectors: <list>"
-2. The Hunter agent will take over from here
+1. Return an `IN_PROGRESS` Registry update request to the parent; parent applies it after approval
+2. Return the approved brief and Registry update request to the parent orchestrator
 
 ## Category Search Strategies
 

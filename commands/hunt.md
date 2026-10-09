@@ -1,128 +1,103 @@
 ---
 name: hunt
-description: "Full CVE hunting pipeline. Usage: /hunt <package-name>. Orchestrates all agents: registry check, clone, code review, PoC build, validation, and report generation."
+description: "Parent-owned CVE research pipeline with Registry, Recon (or Recon-WP), Hunter, Exploiter, Validator, and Director approval gates. Usage: /hunt <package>."
 ---
 
-# /hunt <package-name>
+# /hunt <package>
 
-Run the full CVE hunting pipeline on a target package.
+Parent session owns workflow state, agent delegation, human approvals, cloning, and Registry updates. Execute phases in order. Never let a role agent assume direct communication with another role.
 
-## Pipeline Steps
+## Target Type Detection
 
-Execute these steps in order. Stop if any step fails.
-
-### Step 1: Registry Check
-
-Check if this package has already been investigated:
-1. Read REGISTRY.md and search for the package name
-2. Query NVD/OSV for existing CVEs:
-   ```bash
-   curl -s "https://api.osv.dev/v1/query" -d '{"package":{"name":"$ARGUMENTS","ecosystem":"npm"}}'
-   ```
-3. If found in registry as SUBMITTED/SKIP/DUPLICATE -> report status and STOP
-4. If found as FALSE_POSITIVE -> show reason and ask Director if they want to re-investigate
-5. If CLEAN -> proceed
-
-### Step 2: Target Reconnaissance
-
-Gather target information:
-1. Get repo metadata:
-   ```bash
-   gh search repos "$ARGUMENTS" --json fullName,stargazerCount,updatedAt,description --limit 5
-   ```
-2. Check npm download counts:
-   ```bash
-   curl -s "https://api.npmjs.org/downloads/point/last-week/$ARGUMENTS"
-   ```
-3. Check for SECURITY.md, bug bounty info
-4. List existing security advisories:
-   ```bash
-   gh api "repos/<owner>/<repo>/security-advisories" 2>/dev/null
-   ```
-5. Create `targets/<package>/brief.md` with findings
-
-### Step 3: Clone and Setup
+Before Phase 1, determine whether `<package>` is a WordPress plugin or a generic package (npm/PyPI/RubyGems/Go/GitHub repo):
 
 ```bash
-# Clone the repo
-git clone --depth 1 <repo-url> targets/<package>/repo
-
-# Check the version
-cat targets/<package>/repo/package.json | python3 -c "import sys,json; print(json.load(sys.stdin)['version'])"
+curl -s "https://api.wordpress.org/plugins/info/1.2/?action=plugin_information&request[slug]=<package>" | python3 -m json.tool
 ```
 
-### Step 4: Hunter Code Review
+- If this returns a valid plugin record (not an error), treat `<package>` as a **WordPress plugin target**: use the **Recon-WP** agent in Phase 2, source acquisition is `svn export`, and this run is scoped to the Patchstack bug bounty (install-bucket and Unauthenticated/Subscriber/Customer privilege rules apply throughout -- see [`knowledge/../plans/patchstack-wordpress-bounty-plan.md`](../plans/patchstack-wordpress-bounty-plan.md)).
+- Otherwise, treat it as a **generic package target**: use the generic **Recon** agent in Phase 2, source acquisition is `git clone`, as before.
 
-Perform systematic code review as the Hunter agent:
+Record which path was taken in `workflow.json` as `targetType: "wordpress-plugin"` or `targetType: "generic"`.
 
-1. Map attack surface based on package type
-2. Search for vulnerability patterns (Tier 1 first, then Tier 2, then Tier 3)
-3. For each potential finding, trace the full data flow: source -> transforms -> sink
-4. Document findings in `targets/<package>/findings.md`
+## State
 
-If no findings after thorough review:
-- Record in REGISTRY.md as SKIP with vectors checked
-- Report to Director: "No vulnerabilities found in <package>. Checked: <vectors>."
-- STOP
+Create `targets/<repo>/workflow.json` with `currentPhase`, `targetType`, `targetApproved`, `pocApproved`, and `submissionApproved` fields as shown in the bundled workflow-state template. Record phase and boolean approvals only; never store credentials.
 
-### Step 5: PoC Development
+## Phase 1: Registry Check
 
-For each finding:
+1. Ask Registry for exact local status and known-advisory evidence.
+2. For a WordPress-plugin target, also check Patchstack's public database for the slug in addition to REGISTRY.md -- a report already published there is a `DUPLICATE` even if REGISTRY.md has never seen it.
+3. Stop for `SUBMITTED`, `SKIP`, or `DUPLICATE`.
+4. For `IN_PROGRESS`, resume existing artifacts instead of cloning.
+5. For `FALSE_POSITIVE`, show prior reason and require Director approval to reopen.
+6. Continue only with `CLEAN` or explicitly reopened work.
 
-1. Present the PoC plan to the Director:
-   ```
-   Finding: <description>
-   Root cause: <file:line>
-   Plan: <approach>
-   Chaining: <opportunities>
-   CVSS: <estimated score>
-   Approve?
-   ```
-2. Wait for Director approval
-3. Write PoC script at `targets/<package>/poc_<vuln_type>.py`
-4. Test that the PoC runs and produces expected output
+## Phase 2: Recon and Target Approval
 
-### Step 6: Validation
+1. Run **Recon-WP** (WordPress-plugin target) or **Recon** (generic target), per the Target Type Detection step, and require `targets/<repo>/brief.md`.
+2. Present package/plugin identity, attack surface, existing advisories, version, and top vectors. For a WordPress-plugin target, also present the active-install bucket (must be `5000` or `10000` for the Patchstack plan) and the lowest role that reaches a sink (must be Unauthenticated, Subscriber, or Customer -- reject the proposal outright if Recon-WP surfaces only Contributor+-gated findings).
+3. Ask Director to approve target.
+4. If rejected, set phase `target_rejected` and stop before clone.
+5. If approved, set `targetApproved: true`, update Registry to `IN_PROGRESS`, then acquire source into `targets/<repo>/repo`:
+   - Generic target: `git clone`.
+   - WordPress-plugin target: `svn export https://plugins.svn.wordpress.org/<slug>/trunk targets/<repo>/repo` (or the attached unmodified premium archive if the plugin is not free/public).
 
-Run the full 6-gate verification process:
+Parent verifies exact checked-out version and latest release before invoking Hunter.
 
-1. Gate 1 (Process): Verify all evidence is present
-2. Gate 2 (Reachability): Confirm attacker can reach the vuln
-3. Gate 3 (Real Impact): Confirm genuine security consequence
-4. Gate 4 (PoC Validation): Run PoC 3 times, all must succeed
-5. Gate 5 (Math Bounds): For DoS, verify exponential growth
-6. Gate 6 (Environment): Check for runtime/framework protections
+## Phase 3: Hunter Review
 
-Apply the 13-item false positive checklist.
-Run the Devil's Advocate 7-question self-check.
+Run Hunter with brief and existing local source. Require `targets/<repo>/findings.md` containing either complete source-to-sink evidence or explicit clean vectors.
 
-Write verdict to `targets/<package>/verdict.md`.
+If no exploitable finding:
 
-### Step 7: Report
+1. Move Registry entry from `IN_PROGRESS` to `SKIP`.
+2. Set phase `complete_skip`.
+3. Report checked vectors and stop.
 
-If CONFIRMED:
-1. Determine the best disclosure channel:
-   - HackerOne (if program exists)
-   - GitHub Security Advisory (preferred for open source)
-   - Direct email (if SECURITY.md provides one)
-2. Generate the disclosure report using `/report`
-3. Present to Director for final submit/drop decision
+## Phase 4: PoC Plan Approval
 
-If FALSE_POSITIVE:
-1. Record in REGISTRY.md with reason
-2. Report lesson learned to Director
+For each finding, parent presents:
 
-### Step 8: Registry Update
-
-Update REGISTRY.md with the final outcome:
-- SUBMITTED: package, severity, channel, date
-- FALSE_POSITIVE: package, what was checked, why false, date
-- SKIP: package, vectors checked, date
-
-## Quick Reference
-
+```text
+Finding: <claim>
+Root cause: <file:line>
+CWE: <id>
+Local PoC plan: <setup, trigger, benign evidence, cleanup>
+Chaining opportunity: <none or evidence-based chain>
+Estimated CVSS: <vector and score>
+Approve PoC?
 ```
-/hunt lodash-merge    # Hunt in a specific package
-/hunt csv-parse       # Hunt in csv-parse
-/hunt pug             # Hunt in pug template engine
-```
+
+If rejected, keep finding, set phase `poc_rejected`, and stop. Approval must be explicit; set `pocApproved: true` before any `poc_*` write.
+
+## Phase 5: Exploiter
+
+Run Exploiter only after PoC approval. Require a local-only `targets/<repo>/poc_<type>.*` with exact version, benign evidence, deterministic exit status, and cleanup. Parent then passes finding and PoC artifacts to Validator.
+
+## Phase 6: Validator
+
+Validator independently applies all six gates and writes `targets/<repo>/verdict.md`.
+
+- `FALSE_POSITIVE`: move Registry entry accordingly, set phase `complete_false_positive`, report reason, stop.
+- `NEEDS_MORE_INFO`: route exact questions back to Hunter or Exploiter, set phase `needs_more_info`, and do not report or submit.
+- `CONFIRMED`: set phase `confirmed`, then continue.
+
+For a WordPress-plugin target, Validator must additionally re-derive the CVSS v3.1 **base** vector with the official FIRST calculator and reject as `FALSE_POSITIVE` (reason: out of Patchstack scope) if any of: `AC:H`, base score ≤ 8.0, the PoC requires WP-CLI or server-side-only steps (no remote-attacker PoC), or the lowest reachable role is Contributor or higher.
+
+## Phase 7: Report Draft and Submission Approval
+
+1. Run `/report` to write `targets/<repo>/report.md` as a draft. For a WordPress-plugin target, the channel is always the Patchstack report form (`patchstack.com/database/report`), not the generic HackerOne/GHSA/SECURITY.md auto-detection -- populate component slug/link, affected version, prerequisite role, OWASP 2021 class, description, and step-by-step remote PoC per that form's fields, and attach the original unmodified archive if the plugin is premium.
+2. Present channel, CVSS, evidence, and report path to Director.
+3. Ask for separate submission approval.
+4. If rejected, record Director drop reason as `SKIP` or `FALSE POSITIVES`, then stop.
+5. If approved, set `submissionApproved: true` and phase `approved_for_submission`.
+6. Do not mark `SUBMITTED` until Director confirms report was actually sent.
+
+## Phase 8: Final Registry Update
+
+After confirmed submission, move entry to `SUBMITTED` with channel, date, severity, and `awaiting triage`. Every terminal path must leave one Registry entry and a final workflow phase.
+
+## Resume Rule
+
+On resume, read `workflow.json`, Registry, and existing artifacts. Continue from first incomplete phase. Never repeat approved work or overwrite evidence without explaining why.

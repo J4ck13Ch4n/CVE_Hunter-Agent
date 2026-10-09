@@ -1,48 +1,35 @@
-#!/bin/bash
-# Query OSV.dev API for known vulnerabilities
-# Usage: ./check-osv.sh <ecosystem> <package-name> [version]
-# Ecosystems: npm, PyPI, Go, crates.io, RubyGems, Packagist, Maven, NuGet
-
+#!/usr/bin/env bash
 set -euo pipefail
 
 ECOSYSTEM="${1:?Usage: check-osv.sh <ecosystem> <package-name> [version]}"
 PACKAGE="${2:?Usage: check-osv.sh <ecosystem> <package-name> [version]}"
 VERSION="${3:-}"
 
-echo "[*] Searching OSV.dev for: $PACKAGE ($ECOSYSTEM)"
+PAYLOAD="$(python3 - "$ECOSYSTEM" "$PACKAGE" "$VERSION" <<'PY'
+import json, sys
+query = {"package": {"ecosystem": sys.argv[1], "name": sys.argv[2]}}
+if sys.argv[3]: query["version"] = sys.argv[3]
+print(json.dumps(query))
+PY
+)"
 
-if [ -n "$VERSION" ]; then
-    PAYLOAD="{\"package\":{\"name\":\"$PACKAGE\",\"ecosystem\":\"$ECOSYSTEM\"},\"version\":\"$VERSION\"}"
-else
-    PAYLOAD="{\"package\":{\"name\":\"$PACKAGE\",\"ecosystem\":\"$ECOSYSTEM\"}}"
+OSV_URL="${OSV_URL:-https://api.osv.dev/v1/query}"
+if ! RESPONSE="$(curl --fail-with-body --silent --show-error --connect-timeout 10 --max-time 30 \
+  -X POST -H 'Content-Type: application/json' -d "$PAYLOAD" "$OSV_URL")"; then
+  printf '%s\n' '{"status":"UNKNOWN","source":"OSV","reason":"request_failed"}' >&2
+  exit 1
 fi
 
-RESPONSE=$(curl -s -X POST "https://api.osv.dev/v1/query" \
-    -H "Content-Type: application/json" \
-    -d "$PAYLOAD")
-
-VULNS=$(echo "$RESPONSE" | python3 -c "
-import sys, json
-data = json.load(sys.stdin)
-vulns = data.get('vulns', [])
-print(len(vulns))
-" 2>/dev/null)
-
-echo "[*] Known vulnerabilities: $VULNS"
-
-if [ "$VULNS" -gt 0 ]; then
-    echo ""
-    echo "ID | Severity | Summary"
-    echo "---|----------|--------"
-    echo "$RESPONSE" | python3 -c "
-import sys, json
-data = json.load(sys.stdin)
-for v in data.get('vulns', []):
-    vid = v.get('id', 'N/A')
-    summary = v.get('summary', 'No summary')[:80]
-    severity = 'N/A'
-    for s in v.get('severity', []):
-        severity = s.get('score', 'N/A')
-    print(f'{vid} | {severity} | {summary}')
-" 2>/dev/null
-fi
+python3 - "$PACKAGE" "$ECOSYSTEM" "$VERSION" 3<<<"$RESPONSE" <<'PY'
+import json, sys
+package, ecosystem, version = sys.argv[1:]
+try: data = json.load(open(3))
+except json.JSONDecodeError as exc:
+    print(json.dumps({"status": "UNKNOWN", "source": "OSV", "package": package, "ecosystem": ecosystem, "version": version, "reason": "invalid_json"}))
+    raise SystemExit(1)
+vulns = data.get("vulns", [])
+if not isinstance(vulns, list):
+    print(json.dumps({"status": "UNKNOWN", "source": "OSV", "package": package, "ecosystem": ecosystem, "version": version, "reason": "invalid_schema"}))
+    raise SystemExit(1)
+print(json.dumps({"status": "CLEAN" if not vulns else "FINDINGS", "source": "OSV", "package": package, "ecosystem": ecosystem, "version": version, "vulnerabilities": vulns}, separators=(",", ":")))
+PY

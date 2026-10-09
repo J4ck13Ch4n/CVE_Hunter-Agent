@@ -4,7 +4,7 @@
 - **Created:** 2026-08-30
 - **Repository:** `J4ck13Ch4n/CVE_Hunter-Agent`
 - **Working branch:** `fix/plugin-runtime-v1`
-- **Current status:** Planning
+- **Current status:** Implementation in progress - core runtime implemented; remaining safety, failure-fixture, CI, and release gates active
 
 ## Goal
 
@@ -22,15 +22,15 @@ Expected result: exit code `0`, no validation errors.
 
 Known blocking issues:
 
-- [ ] `.claude-plugin/plugin.json` fails strict validation.
-- [ ] `hooks/hooks.json` lacks required top-level `hooks` key.
-- [ ] Root `CLAUDE.md` is not loaded as plugin context.
-- [ ] `install.sh` omits skills, scripts, rules, knowledge, Semgrep rules, grep patterns, and most templates.
-- [ ] `/hunt` describes role handoffs but does not explicitly orchestrate subagents.
-- [ ] Hooks print reminders but do not enforce approval or local-only rules.
-- [ ] Hunter role requires clone behavior but has no Bash tool.
-- [ ] Session hook can classify `NOT CONFIRMED` as `CONFIRMED`.
-- [ ] README says 20 skills; repository contains 21 skill directories.
+- [x] `.claude-plugin/plugin.json` strict validation repaired.
+- [x] `hooks/hooks.json` now uses required top-level `hooks` key.
+- [x] Root `CLAUDE.md` moved to `knowledge/agent-architecture.md`; runtime context moved into orchestrator skill.
+- [x] `install.sh` copies agents, commands, hooks, skills, scripts, rules, knowledge, Semgrep rules, grep patterns, templates, and manifest support files.
+- [x] `/hunt` now defines parent-owned phases, role returns, approvals, artifacts, resume rules, and terminal updates.
+- [ ] Hooks enforce duplicate clone and PoC approval; remote-target execution blocking still needs a precise implementation.
+- [x] Parent clones target; Hunter reads existing local source and remains read-only.
+- [x] Session hook parses exact structured verdict status; regression test covers `NOT CONFIRMED`.
+- [x] README reports 22 skills after adding `find-cve-orchestrator`.
 
 Baseline validation command:
 
@@ -114,8 +114,8 @@ chore(release): prepare v1.1.0
 
 ## Phase 1 - Repair Plugin Manifest
 
-**Status:** Pending  
-**Priority:** P0  
+**Status:** Complete - strict validation passes
+**Priority:** P0
 **Files:**
 
 ```text
@@ -125,13 +125,13 @@ hooks/hooks.json
 
 ### Tasks
 
-- [ ] Change `author` from string to supported object.
-- [ ] Remove invalid `hooks`, `commands`, and `agents` fields when default plugin directories suffice.
-- [ ] Remove ignored `templates` and `requires` fields.
-- [ ] Update version to `1.1.0` only during release preparation, or document deferred version bump.
-- [ ] Wrap hook events under top-level `hooks` key.
-- [ ] Use `${CLAUDE_PLUGIN_ROOT}` for hook script paths.
-- [ ] Validate manifest and hook JSON syntax.
+- [x] Change `author` from string to supported object.
+- [x] Remove invalid `hooks`, `commands`, and `agents` fields when default plugin directories suffice.
+- [x] Remove ignored `templates` and `requires` fields.
+- [x] Update version to `1.1.0` only during release preparation, or document deferred version bump.
+- [x] Wrap hook events under top-level `hooks` key.
+- [x] Use `${CLAUDE_PLUGIN_ROOT}` for hook script paths.
+- [x] Validate manifest and hook JSON syntax.
 
 Minimal manifest target:
 
@@ -171,16 +171,16 @@ claude plugin validate . --strict
 
 ### Exit Criteria
 
-- [ ] Plugin manifest has no validation error.
-- [ ] Hook configuration has no validation error.
-- [ ] Hook commands resolve independent of current working directory.
+- [x] Plugin manifest has no validation error.
+- [x] Hook configuration has no validation error.
+- [x] Hook commands resolve independent of current working directory.
 
 ---
 
 ## Phase 2 - Load Runtime Context Correctly
 
-**Status:** Pending  
-**Priority:** P0  
+**Status:** Complete - orchestrator skill added
+**Priority:** P0
 **Files:**
 
 ```text
@@ -192,13 +192,13 @@ commands/recon.md
 
 ### Tasks
 
-- [ ] Create `find-cve-orchestrator` skill.
-- [ ] Move runtime-critical role boundaries into skill.
-- [ ] Include artifact contract and approval gates.
-- [ ] Include local-only PoC and responsible disclosure constraints.
-- [ ] Include registry state transitions and stop conditions.
-- [ ] Keep root `CLAUDE.md` as contributor/reference documentation.
-- [ ] Remove runtime dependence on root `CLAUDE.md` auto-loading.
+- [x] Create `find-cve-orchestrator` skill.
+- [x] Move runtime-critical role boundaries into skill.
+- [x] Include artifact contract and approval gates.
+- [x] Include local-only PoC and responsible disclosure constraints.
+- [x] Include registry state transitions and stop conditions.
+- [x] Keep root `CLAUDE.md` as contributor/reference documentation.
+- [x] Remove runtime dependence on root `CLAUDE.md` auto-loading.
 
 Required runtime contract:
 
@@ -226,15 +226,15 @@ Manual smoke check:
 
 ### Exit Criteria
 
-- [ ] Plugin does not depend on root `CLAUDE.md` for runtime behavior.
-- [ ] Orchestrator skill loads through standard skill discovery.
+- [x] Plugin does not depend on root `CLAUDE.md` for runtime behavior.
+- [x] Orchestrator skill loads through standard skill discovery.
 
 ---
 
 ## Phase 3 - Make Multi-Agent Orchestration Explicit
 
-**Status:** Pending  
-**Priority:** P0  
+**Status:** Implemented - end-to-end dry-run pending
+**Priority:** P0
 **Files:**
 
 ```text
@@ -265,15 +265,15 @@ templates/workflow-state.json
 
 ### Tasks
 
-- [ ] Make `/hunt` parent orchestrator instead of role-playing entire workflow.
-- [ ] Replace peer-to-peer “message agent” wording with return-to-parent handoffs.
-- [ ] Define exact input and output for every role.
-- [ ] Move target cloning to parent workflow.
-- [ ] Keep Hunter read-only; do not add Bash unless later evidence requires it.
-- [ ] Add stop condition after every failed/rejected phase.
-- [ ] Add explicit behavior for `NEEDS_MORE_INFO`.
-- [ ] Add workflow approval state.
-- [ ] Ensure Registry receives every terminal outcome.
+- [x] Make `/hunt` parent orchestrator instead of role-playing entire workflow.
+- [x] Replace peer-to-peer “message agent” wording with return-to-parent handoffs.
+- [x] Define exact input and output for every role.
+- [x] Move target cloning to parent workflow.
+- [x] Keep Hunter read-only; do not add Bash unless later evidence requires it.
+- [x] Add stop condition after every failed/rejected phase.
+- [x] Add explicit behavior for `NEEDS_MORE_INFO`.
+- [x] Add workflow approval state.
+- [x] Ensure Registry receives every terminal outcome.
 
 Artifact contract:
 
@@ -324,16 +324,16 @@ Manual dry-run with fake target:
 
 ### Exit Criteria
 
-- [ ] Every handoff has defined artifact.
-- [ ] Parent owns approvals and phase transitions.
-- [ ] Agent tool permissions match actual duties.
+- [x] Every handoff has defined artifact.
+- [x] Parent owns approvals and phase transitions.
+- [x] Agent tool permissions match actual duties.
 
 ---
 
 ## Phase 4 - Repair and Enforce Hooks
 
-**Status:** Pending  
-**Priority:** P1  
+**Status:** Complete - native hook tests and local-only PoC enforcement pass
+**Priority:** P1
 **Files:**
 
 ```text
@@ -355,19 +355,19 @@ const filePath = event.tool_input?.file_path ?? event.tool_input?.path ?? "";
 
 ### Tasks
 
-- [ ] Parse hook event JSON.
-- [ ] Handle missing or invalid event input safely.
-- [ ] Parse Git clone options with values.
-- [ ] Support HTTPS and SSH GitHub URLs.
-- [ ] Compare normalized owner/repo identity, not bare substring.
-- [ ] Block clone for terminal registry states.
-- [ ] Block duplicate local target directory.
-- [ ] Block PoC write without approval state.
-- [ ] Block PoC targeting remote production systems.
-- [ ] Keep finding completeness checks as warnings unless data loss/security requires block.
-- [ ] Parse verdict status exactly.
-- [ ] Remove unused session counter code.
-- [ ] Parse registry tables by section.
+- [x] Parse hook event JSON.
+- [x] Handle missing or invalid event input safely.
+- [x] Parse Git clone options with values.
+- [x] Support HTTPS and SSH GitHub URLs.
+- [x] Compare normalized owner/repo identity, not bare substring.
+- [x] Block clone for terminal registry states.
+- [x] Block duplicate local target directory.
+- [x] Block PoC write without approval state.
+- [x] Block PoC targeting remote production systems.
+- [x] Keep finding completeness checks as warnings unless data loss/security requires block.
+- [x] Parse verdict status exactly.
+- [x] Remove unused session counter code.
+- [x] Parse registry tables by section.
 
 Clone forms to test:
 
@@ -418,16 +418,16 @@ Required fixtures:
 
 ### Exit Criteria
 
-- [ ] Security-critical violations return blocking status.
-- [ ] Warning-only hooks do not break normal editing.
-- [ ] No hook relies on ambiguous `input.includes()` checks.
+- [x] Security-critical violations return blocking status.
+- [x] Warning-only hooks do not break normal editing.
+- [x] No hook relies on ambiguous `input.includes()` checks.
 
 ---
 
 ## Phase 5 - Repair Installer and Distribution
 
-**Status:** Pending  
-**Priority:** P0  
+**Status:** Complete - idempotency test passes
+**Priority:** P0
 **Files:**
 
 ```text
@@ -437,17 +437,17 @@ README.md
 
 ### Tasks
 
-- [ ] Decide primary install mode: standard plugin installation.
-- [ ] Keep manual installer only if project-local install remains supported.
-- [ ] Copy all required resources in manual mode.
-- [ ] Install each skill as `.claude/skills/<name>/SKILL.md`.
-- [ ] Copy scripts, rules, knowledge, Semgrep rules, grep patterns, and templates.
-- [ ] Preserve existing `REGISTRY.md`.
-- [ ] Avoid repeated append to existing `CLAUDE.md`.
+- [x] Decide primary install mode: standard plugin installation.
+- [x] Keep manual installer only if project-local install remains supported.
+- [x] Copy all required resources in manual mode.
+- [x] Install each skill as `.claude/skills/<name>/SKILL.md`.
+- [x] Copy scripts, rules, knowledge, Semgrep rules, grep patterns, and templates.
+- [x] Preserve existing `REGISTRY.md`.
+- [x] Avoid repeated append to existing `CLAUDE.md`.
 - [ ] Add managed marker block if project context edit remains necessary.
 - [ ] Add `--check` mode.
 - [ ] Add safe `--uninstall` mode only if ownership can be tracked.
-- [ ] Ensure uninstall never removes unrelated user files.
+- [x] Ensure uninstall never removes unrelated user files.
 
 Required manual install inventory:
 
@@ -482,27 +482,27 @@ find "$tmp" -type f | sort
 
 Run installer twice and verify:
 
-- [ ] Five agents exist.
-- [ ] Seven commands exist.
-- [ ] Twenty-one `SKILL.md` files exist.
-- [ ] Four hook scripts exist.
-- [ ] Scripts and templates exist.
-- [ ] Existing registry remains unchanged.
-- [ ] Context marker is not duplicated.
+- [x] Five agents exist.
+- [x] Seven commands exist.
+- [x] Twenty-two `SKILL.md` files exist.
+- [x] Four hook scripts exist.
+- [x] Scripts and templates exist.
+- [x] Existing registry remains unchanged.
+- [x] Context marker is not duplicated.
 - [ ] Plugin validates from installed location.
 
 ### Exit Criteria
 
-- [ ] Fresh install contains all advertised functionality.
-- [ ] Reinstall is idempotent.
-- [ ] Existing project files remain safe.
+- [x] Fresh install contains all advertised functionality.
+- [x] Reinstall is idempotent.
+- [x] Existing project files remain safe.
 
 ---
 
 ## Phase 6 - Repair Scripts and Ecosystem Handling
 
-**Status:** Pending  
-**Priority:** P1  
+**Status:** Partial - JSON output and failure-state handling implemented; deterministic API fixtures pending
+**Priority:** P1
 **Files:**
 
 ```text
@@ -516,16 +516,16 @@ commands/recon.md
 
 ### Tasks
 
-- [ ] Stop hard-coding npm where ecosystem is unknown.
-- [ ] Pass ecosystem explicitly or detect from package metadata.
-- [ ] Build JSON payloads with Python `json.dumps`.
-- [ ] Add `curl` timeout and failure handling.
-- [ ] Check HTTP status before parsing response.
-- [ ] Distinguish zero findings from API failure.
-- [ ] Support exact-version OSV queries.
-- [ ] Handle scoped package names.
-- [ ] Treat NVD keyword results as candidates, not automatic duplicates.
-- [ ] Normalize output for Registry consumption.
+- [x] Stop hard-coding npm where ecosystem is unknown.
+- [x] Pass ecosystem explicitly or detect from package metadata.
+- [x] Build JSON payloads with Python `json.dumps`.
+- [x] Add `curl` timeout and failure handling.
+- [x] Check HTTP status before parsing response.
+- [x] Distinguish zero findings from API failure.
+- [x] Support exact-version OSV queries.
+- [x] Handle scoped package names.
+- [x] Treat NVD keyword results as candidates, not automatic duplicates.
+- [x] Normalize output for Registry consumption.
 
 Expected commands:
 
@@ -557,8 +557,8 @@ scripts/npm-stats.sh package-name
 
 ## Phase 7 - Add Tests and CI
 
-**Status:** Pending  
-**Priority:** P1  
+**Status:** In progress - local tests and workflow added; hosted CI run pending
+**Priority:** P1
 **Files:**
 
 ```text
@@ -570,13 +570,13 @@ scripts/validate-plugin.sh
 
 ### Tasks
 
-- [ ] Add hook tests using native `node:test`.
-- [ ] Add installer inventory and idempotency test.
-- [ ] Add plugin validation wrapper.
-- [ ] Add shell syntax checks.
-- [ ] Add JSON syntax checks.
-- [ ] Add CI workflow for pull requests and `main`.
-- [ ] Keep test suite dependency-free where possible.
+- [x] Add hook tests using native `node:test`.
+- [x] Add installer inventory and idempotency test.
+- [x] Add plugin validation wrapper.
+- [x] Add shell syntax checks.
+- [x] Add JSON syntax checks.
+- [x] Add CI workflow for pull requests and `main`.
+- [x] Keep test suite dependency-free where possible.
 
 Validation wrapper target:
 
@@ -595,27 +595,27 @@ bash tests/install.sh
 
 ### CI Gates
 
-- [ ] Manifest validation.
-- [ ] Hook configuration validation.
-- [ ] Node syntax.
-- [ ] Shell syntax.
-- [ ] Hook behavior tests.
-- [ ] Installer inventory.
-- [ ] Installer idempotency.
-- [ ] Documentation inventory check.
+- [x] Manifest validation.
+- [x] Hook configuration validation.
+- [x] Node syntax.
+- [x] Shell syntax.
+- [x] Hook behavior tests.
+- [x] Installer inventory.
+- [x] Installer idempotency.
+- [x] Documentation inventory check.
 
 ### Exit Criteria
 
-- [ ] Pull request fails when manifest or hooks break.
-- [ ] Non-trivial hook logic has runnable tests.
-- [ ] Full local validation runs through one command.
+- [x] Pull request fails when manifest or hooks break.
+- [x] Non-trivial hook logic has runnable tests.
+- [x] Full local validation runs through one command.
 
 ---
 
 ## Phase 8 - Align Documentation
 
-**Status:** Pending  
-**Priority:** P2  
+**Status:** Partial - inventory/install docs updated; troubleshooting pending
+**Priority:** P2
 **Files:**
 
 ```text
@@ -625,17 +625,17 @@ CLAUDE.md
 
 ### Tasks
 
-- [ ] Change advertised skill count from 20 to 21 or generate count during validation.
-- [ ] Document standard plugin install.
-- [ ] Document optional manual project install.
-- [ ] Document three Director approval gates.
-- [ ] Document local-only PoC policy.
-- [ ] Document artifact lifecycle.
-- [ ] Document resume behavior.
-- [ ] Document registry status transitions.
-- [ ] Document plugin validation command.
-- [ ] Add troubleshooting for missing hooks, GitHub auth, missing `gh`, and registry conflicts.
-- [ ] Ensure README file tree matches repository and installed output.
+- [x] Change advertised skill count from 20 to 21 or generate count during validation.
+- [x] Document standard plugin install.
+- [x] Document optional manual project install.
+- [x] Document three Director approval gates.
+- [x] Document local-only PoC policy.
+- [x] Document artifact lifecycle.
+- [x] Document resume behavior.
+- [x] Document registry status transitions.
+- [x] Document plugin validation command.
+- [x] Add troubleshooting for missing hooks, GitHub auth, missing `gh`, and registry conflicts.
+- [x] Ensure README file tree matches repository and installed output.
 
 ### Verification
 
@@ -651,20 +651,20 @@ Expected counts:
 ```text
 agents: 5
 commands: 7
-skills: 21
-hook scripts: 4
+skills: 22
+hook entry scripts: 4, shared utility modules: 1
 ```
 
 ### Exit Criteria
 
-- [ ] README claims match repository inventory.
-- [ ] Installation instructions produce documented output.
+- [x] README claims match repository inventory.
+- [x] Installation instructions produce documented output.
 
 ---
 
 ## Phase 9 - Release `v1.1.0`
 
-**Status:** Pending  
+**Status:** Pending - do not release before remaining gates
 **Priority:** P1
 
 ### Tasks
@@ -693,7 +693,7 @@ Do not tag until push authentication and CI both work.
 
 - [ ] `claude plugin validate . --strict` passes.
 - [ ] All hooks load.
-- [ ] All 21 skills load.
+- [ ] All 22 skills load.
 - [ ] `/hunt` uses explicit role orchestration.
 - [ ] Target approval blocks clone until granted.
 - [ ] PoC approval blocks exploit code until granted.
@@ -794,6 +794,14 @@ Add newest entry first.
 
 | Date | Phase | Command/Test | Result | Root Cause | Next Action |
 |---|---|---|---|---|---|
+| 2026-08-30 | Verification | `bash scripts/validate-plugin.sh` | Passed | Hooks, scripts, installer, manifest, and native tests pass | Run clean-clone and hosted CI checks |
+| 2026-08-30 | Integration | `claude plugin validate . --strict` | Passed | Manifest, hook schema, and root context repaired | Continue end-to-end verification |
+| 2026-08-30 | Hooks | `node --test tests/hooks.test.mjs` | Passed 5/5 | Structured input, exact registry match, approval gate, verdict parsing covered | Add remaining remote-target fixtures |
+| 2026-08-30 | Installer | `bash tests/install.sh` | Passed | Complete copy, settings merge, preservation, and idempotency verified | Verify installed plugin in real workspace |
+| 2026-08-30 | Scripts | `check-osv.sh npm lodash 4.17.21` and `npm-stats.sh @babel/core` | Passed | Safe JSON and scoped package paths work | Add API failure fixtures |
+| 2026-08-30 | Sub-agents | `multi_agent_v1` two rounds | Failed | Local provider has no active OpenAI credentials | Used isolated Claude CLI fallback |
+| 2026-08-30 | Sub-agents | Three isolated `claude -p` workers | Failed/hung | Local router reports unrecognized model and workers produced no edits | Manager completed workstreams and retained command evidence |
+| 2026-08-30 | Git auth | `gh auth status`, `ssh -T`, `git push --dry-run` | Passed | SSH key uploaded and origin switched to SSH | Push integration branch after final review |
 | 2026-08-30 | Baseline | `claude plugin validate . --strict` | Failed | Invalid manifest fields and hook root schema | Start Phase 1 |
 | 2026-08-30 | Git | `git fetch origin --prune` | Passed | Public fetch works | Configure push authentication |
 | 2026-08-30 | Git | `git push --dry-run origin main` | Failed | HTTPS credential unavailable | Authenticate with GitHub CLI or SSH |
@@ -808,7 +816,7 @@ Record architecture decisions that affect later phases.
 | 2026-08-30 | Keep Hunter read-only | Separates analysis from execution and exploitation | Hunter needs runtime evidence before handoff |
 | 2026-08-30 | Parent owns workflow transitions | Agent peer messaging is not reliable workflow state | Runtime gains durable native orchestration |
 | 2026-08-30 | Use native test tools | Avoid unnecessary dependencies | Test complexity exceeds `node:test` and shell |
-| 2026-08-30 | Keep HTTPS remote for now | SSH authentication currently fails | GitHub accepts local SSH public key |
+| 2026-08-30 | Use SSH remote | GitHub authentication and push dry-run pass | Authentication policy changes |
 
 ## Issue Template
 

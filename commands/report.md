@@ -168,7 +168,9 @@ Best regards,
 [Your name]
 ```
 
-### Step 4: Present to Director
+### Step 4: Write Draft and Present to Director
+
+Write the draft to `targets/<repo>/report.md`, then present:
 
 ```
 DISCLOSURE REPORT READY
@@ -191,6 +193,4 @@ Approve?
 
 ### Step 5: On Approval
 
-Write the report to `targets/<repo>/report.md` and inform the Director it's ready to submit through the chosen channel.
-
-Update REGISTRY.md to SUBMITTED status.
+Mark workflow as `approved_for_submission` and inform the Director how to submit through the chosen channel. Update REGISTRY.md to `SUBMITTED` only after the Director confirms the report was actually sent.
