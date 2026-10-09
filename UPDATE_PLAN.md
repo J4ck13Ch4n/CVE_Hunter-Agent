@@ -649,10 +649,10 @@ find hooks -maxdepth 1 -name '*.mjs' | wc -l
 Expected counts:
 
 ```text
-agents: 5
-commands: 7
+agents: 6
+commands: 8
 skills: 22
-hook entry scripts: 4, shared utility modules: 1
+hook entry scripts: 5, shared utility modules: 1 (hook-utils.mjs)
 ```
 
 ### Exit Criteria
