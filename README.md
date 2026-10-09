@@ -8,7 +8,7 @@ A Claude Code plugin that systematically finds real CVEs in open source packages
 
 ## What It Is
 
-`find-cve-agent` is a battle-tested harness of 20 skills organized as a 5-agent team. It provides structured workflows for every phase of vulnerability research: target discovery, code review, PoC development, false positive elimination, and responsible disclosure.
+`find-cve-agent` is a battle-tested harness of 22 skills organized as a 6-agent team. It provides structured workflows for every phase of vulnerability research: target discovery, code review, PoC development, false positive elimination, and responsible disclosure.
 
 Every skill encodes practical knowledge about what gets accepted, what gets rejected, and how to avoid wasting time on false positives.
 
@@ -25,18 +25,30 @@ Every skill encodes practical knowledge about what gets accepted, what gets reje
 
 ```bash
 # Clone the plugin
-git clone https://github.com/find-cve-agent/find-cve-agent.git
+git clone https://github.com/J4ck13Ch4n/CVE_Hunter-Agent.git
 
-# Install into your project
-cd your-research-workspace
-bash /path/to/find-cve-agent/install.sh
+# Run directly as a plugin while developing
+cd CVE_Hunter-Agent
+claude --plugin-dir .
 
-# Start hunting
-# In Claude Code:
+# Or install project-local commands, agents, skills, hooks, and resources
+./install.sh --project /path/to/your-research-workspace
+./install.sh --project /path/to/your-research-workspace --check
+
+# Start hunting inside Claude Code
 /hunt <package-name>
 ```
 
-Or manually copy the plugin contents into your project's `.claude/` directory.
+Project-local install preserves existing `CLAUDE.md` and `REGISTRY.md`. Re-running installer updates managed plugin files without duplicating hook settings.
+
+### Troubleshooting
+
+- **Hooks missing:** run `./install.sh --project /path/to/workspace --check`; reinstall if entry files are absent. For direct use, launch Claude Code from plugin root with `claude --plugin-dir .`.
+- **GitHub auth fails:** run `gh auth status`, then `gh auth login`; clone over HTTPS or SSH according to configured credentials.
+- **`gh` missing:** install GitHub CLI and rerun `gh auth status`. Registry/API checks return `UNKNOWN` when required external checks fail.
+- **Registry conflict:** inspect `REGISTRY.md`; resume `IN_PROGRESS`, or choose another target for `SUBMITTED`, `SKIP`, `DUPLICATE`, and unresolved `FALSE POSITIVES` entries. Clone gate blocks exact owner/repo identity.
+- **Approval block:** set only boolean approval fields in target `workflow.json` after Director approval. PoCs remain local-only; remote endpoints are blocked.
+- **API failure:** treat helper exit status `1` and JSON `status: UNKNOWN` as unknown, never as `CLEAN`; retry later or verify through another source.
 
 **Recommended:** Also install [blader/humanizer](https://github.com/blader/humanizer) to auto-clean AI patterns from disclosure reports before sending.
 
@@ -61,6 +73,7 @@ Or manually copy the plugin contents into your project's `.claude/` directory.
 |---------|-------------|
 | `/hunt <package>` | Full pipeline: registry check -> clone -> review -> PoC -> validate -> report |
 | `/recon <category>` | Find targets in a category (e.g., "csv parsers", "template engines") |
+| `/recon-wp <category>` | Find WordPress plugin targets for the Patchstack bug bounty (5K-10K installs, Unauthenticated/Subscriber/Customer only) |
 | `/check-nvd <package>` | Query NVD and OSV.dev for existing CVEs |
 | `/fp-check` | Run the 6-gate false positive elimination on current finding |
 | `/report` | Generate a disclosure report from current finding |
@@ -109,12 +122,13 @@ Or manually copy the plugin contents into your project's `.claude/` directory.
 find-cve-agent/
 +-- .claude-plugin/
 |   +-- plugin.json          # Plugin manifest
-+-- CLAUDE.md                # Agent architecture and instructions
++-- knowledge/agent-architecture.md  # Extended architecture reference
 +-- README.md                # This file
 +-- LICENSE                  # Apache-2.0
 +-- install.sh               # Installation script
 +-- agents/
 |   +-- recon.md             # Target discovery agent
+|   +-- recon-wp.md          # WordPress plugin target discovery agent (Patchstack)
 |   +-- hunter.md            # Code review agent
 |   +-- exploiter.md         # PoC builder agent
 |   +-- validator.md         # FP elimination agent
@@ -122,6 +136,7 @@ find-cve-agent/
 +-- commands/
 |   +-- hunt.md              # /hunt command
 |   +-- recon.md             # /recon command
+|   +-- recon-wp.md          # /recon-wp command
 |   +-- check-nvd.md         # /check-nvd command
 |   +-- fp-check.md          # /fp-check command
 |   +-- report.md            # /report command
@@ -133,6 +148,12 @@ find-cve-agent/
 |   +-- pretooluse-clone-dedup.mjs
 |   +-- pretooluse-finding-selfcheck.mjs
 |   +-- posttooluse-version-check.mjs
++-- skills/                  # 22 runtime skills
++-- scripts/                 # NVD, OSV, and npm helpers
++-- rules/                   # Disclosure and validation rules
++-- knowledge/               # Research references
++-- semgrep/                 # Static-analysis rules
++-- grep-patterns/           # Language search patterns
 +-- templates/
     +-- REGISTRY.md          # Empty registry template
 ```

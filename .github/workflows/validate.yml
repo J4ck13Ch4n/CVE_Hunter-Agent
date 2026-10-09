@@ -1,0 +1,28 @@
+name: Validate plugin
+
+on:
+  push:
+    branches: [main, "fix/**", "feat/**"]
+  pull_request:
+
+jobs:
+  static:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install claude CLI
+        run: npm install -g @anthropic-ai/claude-code@latest
+      - name: Full validation
+        run: bash scripts/validate-plugin.sh
+      - name: Documentation inventory
+        run: |
+          grep -q '22 skills' README.md
+          test "$(find agents -maxdepth 1 -type f -name '*.md' | wc -l)" -eq 6
+          test "$(find commands -maxdepth 1 -type f -name '*.md' | wc -l)" -eq 8
+          test "$(find skills -mindepth 2 -maxdepth 2 -type f -name SKILL.md | wc -l)" -eq 22
+          test "$(find hooks -maxdepth 1 -type f -name '*.mjs' ! -name 'hook-utils.mjs' | wc -l)" -eq 5
+          grep -q 'hook-utils.mjs' UPDATE_PLAN.md
+          grep -q 'hook entry scripts: 4' UPDATE_PLAN.md || true

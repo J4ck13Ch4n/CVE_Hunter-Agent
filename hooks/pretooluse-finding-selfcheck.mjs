@@ -1,64 +1,52 @@
 #!/usr/bin/env node
 
-/**
- * Pre-Tool-Use: Finding Self-Check Hook
- *
- * When writing to findings.md or verdict.md:
- * - Injects the self-criticism checklist as a reminder
- * - Reminds about common false positive patterns
- */
+import { dirname, join, normalize, resolve, sep } from "node:path";
+import { block, hasRemoteTarget, projectRoot, readEvent, targetDirectory, workflowState } from "./hook-utils.mjs";
 
-import { readFileSync } from "fs";
+const event = readEvent();
+const filePath = event.tool_input?.file_path || event.tool_input?.path || "";
+if (!filePath) process.exit(0);
 
-// Read the tool input from stdin
-let input = "";
-try {
-  input = readFileSync("/dev/stdin", "utf-8");
-} catch {
-  process.exit(0);
+const content = [event.tool_input?.content, event.tool_input?.new_string]
+  .filter((value) => typeof value === "string")
+  .join("\n");
+const normalized = normalize(filePath);
+const isRegistry = (normalized.split(sep).pop() || "") === "REGISTRY.md";
+const submittedEdit = typeof event.tool_input?.new_string === "string"
+  ? event.tool_input.new_string
+  : typeof event.tool_input?.content === "string"
+    ? event.tool_input.content
+    : "";
+const registrySubmission = isRegistry && /(?:^|\n)\s*(?:##\s+SUBMITTED|\|[^\n]*\bSUBMITTED\b)/im.test(submittedEdit);
+if (registrySubmission) {
+  const repository = submittedEdit.match(/^\|\s*([^|]+?)\s*\|/m)?.[1]?.trim();
+  const targetName = repository?.split("/").pop()?.toLowerCase();
+  const state = targetName ? workflowState(join(projectRoot(), "targets", targetName)) : null;
+  if (state?.submissionApproved !== true || !["approved_for_submission", "submitted"].includes(state.currentPhase)) {
+    block("Registry submission blocked: Director submission approval missing or workflow is not ready.");
+  }
 }
 
-// Check if we're writing to a findings or verdict file
-const isFindings = input.includes("findings.md");
-const isVerdict = input.includes("verdict.md");
-const isPoc = input.includes("poc_");
+const basename = normalized.split(sep).pop() || "";
+const isFindings = basename === "findings.md";
+const isVerdict = basename === "verdict.md";
+const isPoc = basename.startsWith("poc_");
+if (!isFindings && !isVerdict && !isPoc) process.exit(0);
 
-if (!isFindings && !isVerdict && !isPoc) {
-  process.exit(0);
+if (isPoc) {
+  const root = projectRoot();
+  const targetDir = targetDirectory(root, normalized) || dirname(resolve(root, normalized));
+  const statePath = join(targetDir, "workflow.json");
+  if (workflowState(targetDir)?.pocApproved !== true) {
+    block(`PoC write blocked: Director approval missing in ${statePath}.`);
+  }
+  if (hasRemoteTarget(content)) {
+    block("PoC write blocked: remote target detected; PoCs must use local targets only.");
+  }
 }
 
 const reminders = [];
-
-if (isFindings) {
-  reminders.push("SELF-CHECK REMINDER (findings.md):");
-  reminders.push("  1. Did you trace the FULL data flow from source to sink?");
-  reminders.push("  2. Did you verify the source is attacker-controlled (not internal)?");
-  reminders.push("  3. Did you check for validation/sanitization between source and sink?");
-  reminders.push("  4. Did you read the README for 'untrusted input' warnings?");
-  reminders.push("  5. Is this a real security bug, or intended behavior?");
-}
-
-if (isVerdict) {
-  reminders.push("SELF-CHECK REMINDER (verdict.md):");
-  reminders.push("  1. Did the PoC succeed 3/3 times?");
-  reminders.push("  2. Is this the LATEST version of the package?");
-  reminders.push("  3. Does exploitation require permissions that already grant equivalent access?");
-  reminders.push("  4. Are there runtime/framework protections you haven't checked?");
-  reminders.push("  5. Am I hallucinating? LLMs are biased toward seeing bugs.");
-  reminders.push("  6. Did I actually READ the validation code, or assume it works?");
-  reminders.push("  7. For DoS: OOM crash or just a caught RangeError?");
-}
-
-if (isPoc) {
-  reminders.push("POC REMINDER:");
-  reminders.push("  - Did the Director approve this PoC plan?");
-  reminders.push("  - Does the PoC run locally only (no remote targets)?");
-  reminders.push("  - Does it use the exact version from the target's lockfile?");
-  reminders.push("  - Does it produce concrete evidence (not 'it might crash')?");
-}
-
-if (reminders.length > 0) {
-  console.log(reminders.join("\n"));
-}
-
-process.exit(0);
+if (isFindings) reminders.push("FINDING CHECK: trace attacker-controlled source to sink; verify validation, auth, docs, and real impact.");
+if (isVerdict) reminders.push("VERDICT CHECK: require exact latest version, default config, concrete evidence, and 3/3 successful PoC runs.");
+if (isPoc) reminders.push("POC CHECK: local target only, benign evidence, exact version, deterministic cleanup.");
+if (reminders.length) console.log(reminders.join("\n"));

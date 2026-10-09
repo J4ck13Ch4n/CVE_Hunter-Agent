@@ -1,44 +1,50 @@
 {
-  "SessionStart": [
-    {
-      "matcher": "startup|resume|clear|compact",
-      "hooks": [
-        {
-          "type": "command",
-          "command": "node \"hooks/session-start-context.mjs\""
-        }
-      ]
-    }
-  ],
-  "PreToolUse": [
-    {
-      "matcher": "Bash",
-      "hooks": [
-        {
-          "type": "command",
-          "command": "node \"hooks/pretooluse-clone-dedup.mjs\""
-        }
-      ]
-    },
-    {
-      "matcher": "Write|Edit",
-      "hooks": [
-        {
-          "type": "command",
-          "command": "node \"hooks/pretooluse-finding-selfcheck.mjs\""
-        }
-      ]
-    }
-  ],
-  "PostToolUse": [
-    {
-      "matcher": "Read",
-      "hooks": [
-        {
-          "type": "command",
-          "command": "node \"hooks/posttooluse-version-check.mjs\""
-        }
-      ]
-    }
-  ]
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "startup|resume|clear|compact",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/session-start-context.mjs\""
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/pretooluse-clone-dedup.mjs\""
+          },
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/pretooluse-poc-execution.mjs\""
+          }
+        ]
+      },
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/pretooluse-finding-selfcheck.mjs\""
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Read",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/posttooluse-version-check.mjs\""
+          }
+        ]
+      }
+    ]
+  }
 }

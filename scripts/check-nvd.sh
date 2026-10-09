@@ -1,36 +1,29 @@
-#!/bin/bash
-# Query NVD API for existing CVEs on a package
-# Usage: ./check-nvd.sh <package-name>
-
+#!/usr/bin/env bash
 set -euo pipefail
 
 PACKAGE="${1:?Usage: check-nvd.sh <package-name>}"
-API_URL="https://services.nvd.nist.gov/rest/json/cves/2.0"
+QUERY="$(python3 - "$PACKAGE" <<'PY'
+import sys, urllib.parse
+print(urllib.parse.urlencode({"keywordSearch": sys.argv[1], "resultsPerPage": 20}))
+PY
+)"
 
-echo "[*] Searching NVD for: $PACKAGE"
-
-RESPONSE=$(curl -s "${API_URL}?keywordSearch=${PACKAGE}&resultsPerPage=20")
-TOTAL=$(echo "$RESPONSE" | python3 -c "import sys,json; print(json.load(sys.stdin).get('totalResults', 0))" 2>/dev/null)
-
-echo "[*] Total CVEs found: $TOTAL"
-
-if [ "$TOTAL" -gt 0 ]; then
-    echo ""
-    echo "CVE ID | Severity | Description"
-    echo "-------|----------|------------"
-    echo "$RESPONSE" | python3 -c "
-import sys, json
-data = json.load(sys.stdin)
-for vuln in data.get('vulnerabilities', []):
-    cve = vuln['cve']
-    cve_id = cve['id']
-    desc = cve['descriptions'][0]['value'][:80]
-    metrics = cve.get('metrics', {})
-    severity = 'N/A'
-    for key in ['cvssMetricV31', 'cvssMetricV30', 'cvssMetricV2']:
-        if key in metrics:
-            severity = metrics[key][0]['cvssData'].get('baseSeverity', 'N/A')
-            break
-    print(f'{cve_id} | {severity} | {desc}')
-" 2>/dev/null
+if ! RESPONSE="$(curl --fail-with-body --silent --show-error --connect-timeout 10 --max-time 30 \
+  "${NVD_URL:-https://services.nvd.nist.gov/rest/json/cves/2.0}?$QUERY")"; then
+  printf '%s\n' '{"status":"UNKNOWN","source":"NVD","reason":"request_failed"}' >&2
+  exit 1
 fi
+
+python3 - "$PACKAGE" 3<<<"$RESPONSE" <<'PY'
+import json, sys
+package = sys.argv[1]
+try: data = json.load(open(3))
+except json.JSONDecodeError:
+    print(json.dumps({"status": "UNKNOWN", "source": "NVD", "package": package, "reason": "invalid_json"}))
+    raise SystemExit(1)
+candidates = data.get("vulnerabilities", [])
+if not isinstance(candidates, list):
+    print(json.dumps({"status": "UNKNOWN", "source": "NVD", "package": package, "reason": "invalid_schema"}))
+    raise SystemExit(1)
+print(json.dumps({"status": "CANDIDATES" if candidates else "CLEAN", "source": "NVD", "package": package, "totalResults": data.get("totalResults", len(candidates)), "vulnerabilities": candidates}, separators=(",", ":")))
+PY

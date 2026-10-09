@@ -1,41 +1,38 @@
-#!/bin/bash
-# Get npm package statistics (downloads, version, maintainers)
-# Usage: ./npm-stats.sh <package-name>
-
+#!/usr/bin/env bash
 set -euo pipefail
 
 PACKAGE="${1:?Usage: npm-stats.sh <package-name>}"
+ENCODED="$(python3 - "$PACKAGE" <<'PY'
+import sys, urllib.parse
+print(urllib.parse.quote(sys.argv[1], safe="@"))
+PY
+)"
+CURL=(curl --fail-with-body --silent --show-error --connect-timeout 10 --max-time 30)
+REGISTRY_URL="${NPM_REGISTRY_URL:-https://registry.npmjs.org}"
+DOWNLOADS_URL="${NPM_DOWNLOADS_URL:-https://api.npmjs.org}"
 
-echo "[*] Fetching npm stats for: $PACKAGE"
+if ! META="$("${CURL[@]}" "$REGISTRY_URL/$ENCODED")"; then
+  printf '%s\n' '{"status":"UNKNOWN","source":"npm","reason":"metadata_request_failed"}' >&2
+  exit 1
+fi
+if ! DOWNLOADS="$("${CURL[@]}" "$DOWNLOADS_URL/downloads/point/last-week/$ENCODED")"; then
+  printf '%s\n' '{"status":"UNKNOWN","source":"npm","reason":"downloads_request_failed"}' >&2
+  exit 1
+fi
 
-# Package metadata
-META=$(curl -s "https://registry.npmjs.org/$PACKAGE")
-LATEST=$(echo "$META" | python3 -c "import sys,json; print(json.load(sys.stdin).get('dist-tags',{}).get('latest','N/A'))" 2>/dev/null)
-echo "[*] Latest version: $LATEST"
-
-# Weekly downloads
-DOWNLOADS=$(curl -s "https://api.npmjs.org/downloads/point/last-week/$PACKAGE")
-COUNT=$(echo "$DOWNLOADS" | python3 -c "import sys,json; print(json.load(sys.stdin).get('downloads', 0))" 2>/dev/null)
-echo "[*] Weekly downloads: $COUNT"
-
-# GitHub repo
-REPO=$(echo "$META" | python3 -c "
-import sys, json
-data = json.load(sys.stdin)
-repo = data.get('repository', {})
-if isinstance(repo, dict):
-    url = repo.get('url', 'N/A')
-else:
-    url = str(repo)
-print(url.replace('git+', '').replace('git://', 'https://').replace('.git', ''))
-" 2>/dev/null)
-echo "[*] Repository: $REPO"
-
-# Maintainers
-echo "[*] Maintainers:"
-echo "$META" | python3 -c "
-import sys, json
-data = json.load(sys.stdin)
-for m in data.get('maintainers', []):
-    print(f'  - {m.get(\"name\", \"N/A\")}')
-" 2>/dev/null
+python3 - "$PACKAGE" "$DOWNLOADS" 3<<<"$META" <<'PY'
+import json, sys
+package, downloads_json = sys.argv[1:]
+try:
+    meta = json.load(open(3))
+    downloads = json.loads(downloads_json)
+except json.JSONDecodeError:
+    print(json.dumps({"status": "UNKNOWN", "source": "npm", "package": package, "reason": "invalid_json"}))
+    raise SystemExit(1)
+if not isinstance(meta, dict) or not isinstance(downloads, dict):
+    print(json.dumps({"status": "UNKNOWN", "source": "npm", "package": package, "reason": "invalid_schema"}))
+    raise SystemExit(1)
+repo = meta.get("repository", {})
+repo = repo.get("url", "N/A") if isinstance(repo, dict) else str(repo)
+print(json.dumps({"status": "OK", "source": "npm", "package": package, "latestVersion": meta.get("dist-tags", {}).get("latest"), "weeklyDownloads": downloads.get("downloads"), "repository": repo.replace("git+", "").removesuffix(".git"), "maintainers": [m.get("name", "N/A") for m in meta.get("maintainers", [])]}, separators=(",", ":")))
+PY
